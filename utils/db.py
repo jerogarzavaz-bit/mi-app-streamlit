@@ -1,46 +1,58 @@
 """
 Firebase Firestore persistence layer.
-Falls back gracefully (no error) if Firebase is not configured.
+Falls back gracefully if Firebase is not configured.
 """
 import json
 import streamlit as st
 
-# Keys saved per user (excludes large/ephemeral data)
 SAVE_KEYS = [
     "portfolio", "watchlists", "profile",
-    "alerts", "api_keys", "screen_history",
-    "analyses",
+    "alerts", "api_keys", "screen_history", "analyses",
 ]
+
+_CONNECT_ERROR = None  # stores connection error for display in Settings
 
 
 @st.cache_resource
 def _get_db():
+    global _CONNECT_ERROR
     try:
         from google.cloud import firestore
         from google.oauth2 import service_account
         fb = dict(st.secrets["firebase"])
-        creds = service_account.Credentials.from_service_account_info(fb)
-        return firestore.Client(credentials=creds, project=fb["project_id"])
-    except Exception:
+        creds = service_account.Credentials.from_service_account_info(
+            fb,
+            scopes=[
+                "https://www.googleapis.com/auth/cloud-platform",
+                "https://www.googleapis.com/auth/datastore",
+            ],
+        )
+        client = firestore.Client(credentials=creds, project=fb["project_id"])
+        _CONNECT_ERROR = None
+        return client
+    except Exception as e:
+        _CONNECT_ERROR = str(e)
         return None
 
 
+def get_connection_error() -> str | None:
+    _get_db()  # ensure it has been attempted
+    return _CONNECT_ERROR
+
+
 def _clean(data: dict) -> dict:
-    """Make data JSON-serializable (handles pandas Timestamps, etc.)."""
     return json.loads(json.dumps(data, default=str))
 
 
 def save_user_data(username: str) -> bool:
-    """Save current session_state for this user to Firestore."""
     db = _get_db()
-    if db is None:
+    if db is None or not username:
         return False
     try:
         data = {}
         for key in SAVE_KEYS:
             val = st.session_state.get(key)
             if val is not None:
-                # Strip huge text blobs from analyses to stay within Firestore limits
                 if key == "analyses":
                     val = [{k: v for k, v in a.items()
                             if k not in ("text", "hist", "info")} for a in val]
@@ -48,14 +60,14 @@ def save_user_data(username: str) -> bool:
         db.collection("users").document(username).set(_clean(data))
         return True
     except Exception as e:
-        st.warning(f"Cloud save failed: {e}")
+        # Store error in session_state so it survives st.rerun()
+        st.session_state["_db_save_error"] = str(e)
         return False
 
 
 def load_user_data(username: str) -> bool:
-    """Load user data from Firestore into session_state. Returns True on success."""
     db = _get_db()
-    if db is None:
+    if db is None or not username:
         return False
     try:
         doc = db.collection("users").document(username).get()
@@ -67,7 +79,7 @@ def load_user_data(username: str) -> bool:
                 st.session_state[key] = data[key]
         return True
     except Exception as e:
-        st.warning(f"Cloud load failed: {e}")
+        st.session_state["_db_load_error"] = str(e)
         return False
 
 

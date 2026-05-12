@@ -1,17 +1,37 @@
 import streamlit as st
 import json
 from utils.auth import is_admin, hash_password
-from utils.db import save_user_data, load_user_data, is_configured
+from utils.db import save_user_data, load_user_data, is_configured, get_connection_error
+
+username = st.session_state.get("username", "")
 
 def _autosave():
-    if is_configured():
-        save_user_data(st.session_state.get("username", ""))
+    ok = is_configured() and save_user_data(username)
+    # Store result so it survives the st.rerun() that follows
+    st.session_state["_last_save_ok"] = ok
 
 st.markdown("""
 <div class='page-header'>
   <div class='page-title'>⚙️ Settings</div>
   <div class='page-subtitle'>Configure your preferences</div>
 </div>""", unsafe_allow_html=True)
+
+# ── Show any lingering save errors from the previous run ──────────────────────
+if st.session_state.pop("_last_save_ok", None) is False:
+    err = st.session_state.pop("_db_save_error", "unknown error")
+    st.error(f"☁️ Cloud save failed: {err}")
+elif st.session_state.pop("_last_save_ok", None) is True:
+    pass  # success — no banner needed, the button label is enough
+
+# ── Firebase status banner ────────────────────────────────────────────────────
+if is_configured():
+    st.success("☁️ **Cloud Sync: Active** — your data is saved automatically.", icon="✅")
+else:
+    conn_err = get_connection_error()
+    if conn_err:
+        st.error(f"☁️ **Cloud Sync: Connection failed** — data will NOT persist across reloads.\n\n`{conn_err}`")
+    else:
+        st.warning("☁️ **Cloud Sync: Not configured** — data will NOT persist across reloads.")
 
 api_keys = st.session_state.get("api_keys", {"anthropic":"","alpha_vantage":"","fred":"","fmp":""})
 

@@ -147,7 +147,10 @@ def _load_after_login(username: str):
         return
     from utils.db import load_user_data, is_configured
     if is_configured():
-        load_user_data(username)
+        ok = load_user_data(username)
+        st.session_state["_loaded_from_cloud"] = ok
+    else:
+        st.session_state["_loaded_from_cloud"] = False
     st.session_state[f"_loaded_{username}"] = True
 
 
