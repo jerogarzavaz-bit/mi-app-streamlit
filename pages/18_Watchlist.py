@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
 from utils.data import get_stock_data
+from utils.db import save_user_data, is_configured
+
+def _autosave():
+    if is_configured():
+        save_user_data(st.session_state.get("username", ""))
 
 st.markdown("""
 <div class='page-header'>
@@ -23,6 +28,7 @@ if col2.button("➕ Create") and wl_name:
     if wl_name not in watchlists:
         watchlists[wl_name] = []
         st.session_state.watchlists = watchlists
+        _autosave()
         st.success(f"Created watchlist: {wl_name}")
         st.rerun()
     else:
@@ -46,11 +52,13 @@ with col2:
         tickers = list(dict.fromkeys(tickers + new_tickers))  # dedup
         watchlists[selected] = tickers
         st.session_state.watchlists = watchlists
+        _autosave()
         st.rerun()
 with col3:
     if st.button("🗑️ Delete List"):
         del watchlists[selected]
         st.session_state.watchlists = watchlists
+        _autosave()
         st.rerun()
 
 if not tickers:

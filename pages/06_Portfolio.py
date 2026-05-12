@@ -3,6 +3,11 @@ import pandas as pd
 from datetime import date
 from utils.data import get_stock_data
 from utils.plots import portfolio_pie
+from utils.db import save_user_data, is_configured
+
+def _autosave():
+    if is_configured():
+        save_user_data(st.session_state.get("username", ""))
 
 st.markdown("""
 <div class='page-header'>
@@ -50,7 +55,8 @@ with tab_edit:
                 "purchase_date":  str(new_date),
             })
             st.session_state.portfolio = portfolio
-            st.success(f"Added {new_ticker.upper()}")
+            _autosave()
+            st.success(f"Added {new_ticker.upper()} ☁️")
             st.rerun()
 
     if portfolio:
@@ -64,6 +70,7 @@ with tab_edit:
             if c5.button("🗑️", key=f"del_{i}"):
                 portfolio.pop(i)
                 st.session_state.portfolio = portfolio
+                _autosave()
                 st.rerun()
     else:
         st.info("No holdings yet. Add your first position above.")

@@ -1,5 +1,7 @@
 import streamlit as st
 import json
+from utils.auth import is_admin, hash_password
+from utils.db import save_user_data, load_user_data, is_configured
 
 st.markdown("""
 <div class='page-header'>
@@ -109,6 +111,101 @@ st.markdown(f"""
   ]) + "</div>", unsafe_allow_html=True)
 
 st.divider()
+
+# ── Cloud Sync ────────────────────────────────────────────────────────────────
+st.subheader("☁️ Cloud Sync")
+username = st.session_state.get("username", "")
+
+if not is_configured():
+    st.warning("Firebase not configured. See the setup guide below to enable cloud persistence.")
+else:
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("💾 Save my data to cloud", type="primary", use_container_width=True):
+            if save_user_data(username):
+                st.success("Data saved to cloud!")
+            else:
+                st.error("Save failed.")
+    with c2:
+        if st.button("🔄 Load my data from cloud", use_container_width=True):
+            if load_user_data(username):
+                st.success("Data loaded!")
+                st.rerun()
+            else:
+                st.info("No saved data found in cloud.")
+
+st.divider()
+
+# ── User Management (admin only) ──────────────────────────────────────────────
+if is_admin():
+    st.subheader("👥 User Management")
+    st.info("Add new users by updating your Streamlit Cloud secrets. Use the tool below to generate the password hash.")
+
+    with st.expander("🔐 Generate Password Hash"):
+        st.write("Enter a plain password to get the bcrypt hash to put in your secrets.")
+        new_pass = st.text_input("New password", type="password", key="gen_pass")
+        if new_pass and st.button("Generate Hash"):
+            hashed = hash_password(new_pass)
+            st.code(hashed, language=None)
+            st.caption("Copy this hash — you'll need it in the secrets TOML below.")
+
+    with st.expander("📋 How to add a new user"):
+        st.markdown("""
+**1.** Generate the password hash above.
+
+**2.** Go to your app in [Streamlit Cloud](https://share.streamlit.io) → **Settings** → **Secrets**.
+
+**3.** Add this block for each new user (replace values):
+
+```toml
+[credentials.usernames.NEW_USERNAME]
+name     = "Display Name"
+email    = "user@email.com"
+password = "$2b$12$PASTE_THE_HASH_HERE"
+role     = "user"
+```
+
+For admin users, set `role = "admin"`.
+
+**4.** Click **Save** — the app reloads automatically with the new user.
+        """)
+
+    with st.expander("📋 Full secrets.toml template"):
+        st.code("""
+# ── Authentication ────────────────────────
+[credentials.usernames.admin]
+name     = "Admin"
+email    = "admin@yourapp.com"
+password = "$2b$12$HASH_OF_YOUR_PASSWORD"
+role     = "admin"
+
+[credentials.usernames.jero]
+name     = "Jero"
+email    = "jero@email.com"
+password = "$2b$12$HASH_OF_JERO_PASSWORD"
+role     = "user"
+
+[cookie]
+name        = "sap_cookie"
+key         = "replace_with_a_long_random_string_123456"
+expiry_days = 30
+
+# ── Firebase ──────────────────────────────
+[firebase]
+type                        = "service_account"
+project_id                  = "your-project-id"
+private_key_id              = "abc123..."
+private_key                 = "-----BEGIN PRIVATE KEY-----\\nYOUR_KEY\\n-----END PRIVATE KEY-----\\n"
+client_email                = "firebase-adminsdk-xxx@your-project.iam.gserviceaccount.com"
+client_id                   = "123456789"
+auth_uri                    = "https://accounts.google.com/o/oauth2/auth"
+token_uri                   = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url        = "https://www.googleapis.com/robot/v1/metadata/x509/..."
+universe_domain             = "googleapis.com"
+        """, language="toml")
+
+    st.divider()
 
 # ── Cache ─────────────────────────────────────────────────────────────────────
 st.subheader("🗂️ Cache Management")
