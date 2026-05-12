@@ -11,13 +11,44 @@ st.set_page_config(
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.markdown("""
 <style>
-/* Login page centering */
-div[data-testid="stForm"] { max-width: 420px; margin: 0 auto; }
+@keyframes loginFadeIn {
+    from { opacity: 0; transform: translateY(24px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes floatOrb {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    50%       { transform: translateY(-18px) scale(1.04); }
+}
+@keyframes rotateSlow {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.login-wrap {
+    animation: loginFadeIn 0.6s cubic-bezier(0.16,1,0.3,1) both;
+}
+div[data-testid="stForm"] {
+    max-width: 400px;
+    margin: 0 auto;
+    background: linear-gradient(135deg, rgba(17,21,32,0.95) 0%, rgba(14,16,24,0.98) 100%);
+    border: 1px solid rgba(31,119,180,0.25);
+    border-radius: 18px;
+    padding: 32px 32px 24px 32px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(31,119,180,0.08),
+                inset 0 1px 0 rgba(255,255,255,0.04);
+    backdrop-filter: blur(20px);
+}
 div[data-testid="stForm"] input {
-    background: #1a1a1a !important;
-    border: 1px solid #333 !important;
-    color: white !important;
-    border-radius: 6px !important;
+    background: rgba(6,8,16,0.8) !important;
+    border: 1px solid rgba(31,119,180,0.3) !important;
+    color: #e8edf8 !important;
+    border-radius: 9px !important;
+    font-size: 14px !important;
+    padding: 10px 14px !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+div[data-testid="stForm"] input:focus {
+    border-color: rgba(31,119,180,0.7) !important;
+    box-shadow: 0 0 0 3px rgba(31,119,180,0.15) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -49,14 +80,44 @@ _init_defaults()
 # ── Login page ────────────────────────────────────────────────────────────────
 def _show_login(authenticator):
     st.markdown("""
-    <div style='text-align:center; padding: 60px 0 32px 0;'>
-      <div style='font-size: 56px;'>📊</div>
-      <div style='font-size: 32px; font-weight: 700; color: white; margin-top: 8px;'>
-        Stock Analyzer Pro
+    <div class='login-wrap'>
+    <div style='text-align:center; padding: 56px 0 36px 0;'>
+      <div style='position:relative;display:inline-block;margin-bottom:16px;'>
+        <div style='
+          width:80px;height:80px;
+          background:linear-gradient(135deg,#1f77b4 0%,#7c3aed 100%);
+          border-radius:22px;
+          display:flex;align-items:center;justify-content:center;
+          font-size:40px;
+          box-shadow:0 8px 32px rgba(31,119,180,0.4),0 0 0 1px rgba(124,58,237,0.3);
+          margin:0 auto;
+          animation: floatOrb 4s ease-in-out infinite;
+        '>📊</div>
       </div>
-      <div style='font-size: 15px; color: #1f77b4; margin-top: 6px; letter-spacing: 1px;'>
-        INSTITUTIONAL-GRADE ANALYSIS
+      <div style='
+        font-size: 28px;
+        font-weight: 800;
+        background: linear-gradient(135deg, #e8edf8 30%, #7eb8e8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.8px;
+        margin-bottom: 6px;
+      '>Stock Analyzer Pro</div>
+      <div style='
+        font-size: 11px;
+        color: #4a90d9;
+        letter-spacing: 3px;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      '>Institutional-Grade Analysis</div>
+      <div style='display:flex;justify-content:center;gap:20px;margin-top:14px;'>
+        <span style='color:#3a5a7a;font-size:11px;'>⚡ Real-Time Data</span>
+        <span style='color:#3a5a7a;font-size:11px;'>🤖 Claude AI</span>
+        <span style='color:#3a5a7a;font-size:11px;'>☁️ Cloud Sync</span>
       </div>
+    </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -66,16 +127,16 @@ def _show_login(authenticator):
             "Form name": "Sign in to your account",
             "Username":  "Username",
             "Password":  "Password",
-            "Login":     "Sign In",
+            "Login":     "Sign In →",
         })
 
         status = st.session_state.get("authentication_status")
         if status is False:
-            st.error("Incorrect username or password. Try again.")
+            st.error("Incorrect username or password. Please try again.")
 
     st.markdown("""
-    <div style='text-align:center; color:#555; font-size:12px; margin-top:48px;'>
-      Stock Analyzer Pro &nbsp;·&nbsp; Powered by Claude AI &amp; yfinance
+    <div style='text-align:center; color:#2a3a5a; font-size:11px; margin-top:52px; letter-spacing:0.5px;'>
+      Stock Analyzer Pro &nbsp;·&nbsp; Powered by Claude AI &amp; yfinance &nbsp;·&nbsp; © 2025
     </div>
     """, unsafe_allow_html=True)
 
@@ -138,15 +199,31 @@ _check_alerts()
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
-    <div style='text-align:center;padding:12px 0 4px 0;border-bottom:1px solid #222;margin-bottom:6px;'>
-      <span style='font-size:24px;'>📊</span>
-      <div style='font-size:12px;font-weight:700;color:#1f77b4;letter-spacing:3px;margin-top:4px;'>
-        ANALYST
+    <div style='padding:16px 4px 14px 4px;border-bottom:1px solid rgba(31,119,180,0.15);margin-bottom:8px;'>
+      <div style='display:flex;align-items:center;gap:10px;'>
+        <div style='
+          width:36px;height:36px;flex-shrink:0;
+          background:linear-gradient(135deg,#1f77b4,#7c3aed);
+          border-radius:10px;
+          display:flex;align-items:center;justify-content:center;
+          font-size:18px;
+          box-shadow:0 4px 12px rgba(31,119,180,0.35);
+        '>📊</div>
+        <div>
+          <div style='font-size:13px;font-weight:800;color:#c8d8f0;letter-spacing:-0.3px;'>Stock Analyzer</div>
+          <div style='font-size:9px;font-weight:700;color:#4a90d9;letter-spacing:2px;'>PRO</div>
+        </div>
       </div>
     </div>
-    <div style='text-align:center;padding:8px 0 10px 0;border-bottom:1px solid #222;margin-bottom:4px;'>
-      <div style='font-size:13px;color:#888;'>Signed in as</div>
-      <div style='font-size:14px;font-weight:700;color:white;'>{display_name}</div>
+    <div style='
+      margin:0 0 12px 0;
+      padding:10px 12px;
+      background:rgba(31,119,180,0.08);
+      border:1px solid rgba(31,119,180,0.18);
+      border-radius:10px;
+    '>
+      <div style='font-size:10px;color:#4a6a8a;font-weight:600;letter-spacing:0.5px;margin-bottom:3px;'>SIGNED IN AS</div>
+      <div style='font-size:14px;font-weight:700;color:#c8d8f0;'>{display_name}</div>
     </div>
     """, unsafe_allow_html=True)
 
