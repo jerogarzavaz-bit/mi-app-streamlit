@@ -60,11 +60,138 @@ def _refresh_prices(holdings: list) -> list:
     return updated
 
 
+def _parse_yf_csv(file) -> list[dict]:
+    """
+    Parse a Yahoo Finance portfolio CSV export.
+    YF columns (portfolio): Symbol, Current Price, Date, Time, Change, Open,
+    High, Low, Volume, Trade Date, Purchase Price, Quantity, Commission, ...
+    YF columns (watchlist): Symbol, Current Price, Date, Time, Change, ...
+    Returns list of holding dicts compatible with this app.
+    """
+    import io
+    try:
+        content = file.read().decode("utf-8", errors="replace")
+        df = pd.read_csv(io.StringIO(content))
+        df.columns = [c.strip() for c in df.columns]
+        holdings = []
+        for _, row in df.iterrows():
+            ticker = str(row.get("Symbol", "")).strip().upper()
+            if not ticker or ticker == "NAN":
+                continue
+            # Purchase price: try multiple column names YF uses
+            buy_price = None
+            for col in ("Purchase Price", "Cost", "Avg Cost", "Buy Price"):
+                v = row.get(col)
+                if v and str(v).strip() not in ("", "N/A", "nan"):
+                    try:
+                        buy_price = float(str(v).replace("$", "").replace(",", ""))
+                        break
+                    except ValueError:
+                        pass
+            # Quantity
+            qty = None
+            for col in ("Quantity", "Shares", "Qty"):
+                v = row.get(col)
+                if v and str(v).strip() not in ("", "N/A", "nan"):
+                    try:
+                        qty = float(str(v).replace(",", ""))
+                        break
+                    except ValueError:
+                        pass
+            # Purchase date
+            purchase_date = None
+            for col in ("Trade Date", "Purchase Date", "Date Acquired"):
+                v = row.get(col)
+                if v and str(v).strip() not in ("", "N/A", "nan"):
+                    purchase_date = str(v).strip()
+                    break
+            holdings.append({
+                "ticker":         ticker,
+                "quantity":       qty if qty else 1.0,
+                "purchase_price": buy_price if buy_price else 0.0,
+                "purchase_date":  purchase_date or date.today().isoformat(),
+                "_from_yf":       True,
+                "_needs_price":   buy_price is None,
+            })
+        return holdings
+    except Exception as e:
+        st.error(f"Could not parse CSV: {e}")
+        return []
+
+
 tab_ov, tab_edit, tab_rb, tab_risk = st.tabs(["Overview", "Edit Holdings", "Rebalance", "Risk Analytics"])
 
 # ── Edit Holdings ──────────────────────────────────────────────────────────────
 with tab_edit:
-    st.subheader("Add Position")
+
+    # ── Yahoo Finance Import ───────────────────────────────────────────────────
+    with st.expander("📥 Import from Yahoo Finance", expanded=False):
+        st.markdown("""
+        <div style='background:rgba(31,119,180,0.08);border:1px solid rgba(31,119,180,0.2);
+             border-radius:10px;padding:16px 18px;margin-bottom:12px;'>
+          <div style='font-weight:700;color:#7eb8e8;margin-bottom:8px;'>
+            How to export your Yahoo Finance portfolio:
+          </div>
+          <div style='color:#8aadcc;font-size:13px;line-height:1.8;'>
+            1. Go to <strong>finance.yahoo.com</strong> → sign in → <strong>My Portfolio</strong><br>
+            2. Open your portfolio and click the <strong>Download</strong> button (↓ icon, top right)<br>
+            3. A <code>.csv</code> file will download — upload it below
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        uploaded_csv = st.file_uploader(
+            "Upload Yahoo Finance CSV", type=["csv"], key="yf_csv_upload",
+            help="Download from Yahoo Finance → My Portfolio → Download (↓)"
+        )
+
+        if uploaded_csv:
+            parsed = _parse_yf_csv(uploaded_csv)
+            if parsed:
+                needs_price = [h["ticker"] for h in parsed if h.get("_needs_price")]
+
+                st.markdown(f"**{len(parsed)} holdings found:**")
+                preview_rows = []
+                for h in parsed:
+                    preview_rows.append({
+                        "Ticker":         h["ticker"],
+                        "Quantity":       h["quantity"],
+                        "Purchase Price": f"${h['purchase_price']:.2f}" if not h.get("_needs_price") else "⚠️ Not in CSV",
+                        "Purchase Date":  h["purchase_date"],
+                    })
+                st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+
+                if needs_price:
+                    st.warning(
+                        f"⚠️ **{', '.join(needs_price)}**: purchase price not found in CSV. "
+                        "These will be imported with price $0.00 — edit them manually after import."
+                    )
+
+                col_imp, col_rep = st.columns(2)
+                if col_imp.button("➕ Add to existing holdings", type="primary", key="yf_add"):
+                    existing_tickers = {h["ticker"] for h in portfolio}
+                    added = 0
+                    for h in parsed:
+                        clean = {k: v for k, v in h.items() if not k.startswith("_")}
+                        if clean["ticker"] not in existing_tickers:
+                            portfolio.append(clean)
+                            added += 1
+                    st.session_state.portfolio = portfolio
+                    _autosave()
+                    st.success(f"Imported {added} new holdings (skipped {len(parsed)-added} duplicates).")
+                    st.rerun()
+
+                if col_rep.button("🔄 Replace all holdings", key="yf_replace"):
+                    clean_parsed = [{k: v for k, v in h.items() if not k.startswith("_")} for h in parsed]
+                    st.session_state.portfolio = clean_parsed
+                    _autosave()
+                    st.success(f"Replaced portfolio with {len(clean_parsed)} holdings from Yahoo Finance.")
+                    st.rerun()
+
+    st.divider()
+
+    # ── Manual Add ────────────────────────────────────────────────────────────
+    st.subheader("Add Position Manually")
     with st.form("add_holding", clear_on_submit=True):
         c1, c2, c3, c4 = st.columns(4)
         new_ticker = c1.text_input("Ticker", placeholder="AAPL")
@@ -98,7 +225,7 @@ with tab_edit:
                 _autosave()
                 st.rerun()
     else:
-        st.info("No holdings yet. Add your first position above.")
+        st.info("No holdings yet. Add your first position above or import from Yahoo Finance.")
 
 # ── Overview ───────────────────────────────────────────────────────────────────
 with tab_ov:

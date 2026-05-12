@@ -36,6 +36,40 @@ if col2.button("➕ Create") and wl_name:
 
 st.divider()
 
+# ── Import Watchlist from Yahoo Finance CSV ────────────────────────────────────
+with st.expander("📥 Import Watchlist from Yahoo Finance"):
+    import pandas as pd, io
+    st.markdown("""
+    <div style='color:#8aadcc;font-size:13px;line-height:1.8;'>
+      <strong>How to export from Yahoo Finance:</strong><br>
+      1. Go to <strong>finance.yahoo.com</strong> → sign in → <strong>My Portfolio</strong><br>
+      2. Open any watchlist and click the <strong>Download</strong> button (↓)<br>
+      3. Upload the CSV below — the app will read all ticker symbols
+    </div>
+    """, unsafe_allow_html=True)
+
+    wl_csv = st.file_uploader("Upload Yahoo Finance Watchlist CSV", type=["csv"], key="wl_csv")
+    import_name = st.text_input("Save as watchlist name:", placeholder="My YF Watchlist", key="wl_import_name")
+
+    if wl_csv and import_name:
+        try:
+            content = wl_csv.read().decode("utf-8", errors="replace")
+            df_wl = pd.read_csv(io.StringIO(content))
+            df_wl.columns = [c.strip() for c in df_wl.columns]
+            col = next((c for c in df_wl.columns if c.lower() in ("symbol", "ticker")), df_wl.columns[0])
+            raw_tickers = [str(v).strip().upper() for v in df_wl[col] if str(v).strip() and str(v).strip().upper() != "NAN"]
+            st.write(f"Found **{len(raw_tickers)}** tickers: {', '.join(raw_tickers[:10])}{'…' if len(raw_tickers)>10 else ''}")
+            if st.button("✅ Import as Watchlist", type="primary", key="wl_import_btn"):
+                watchlists[import_name] = list(dict.fromkeys(raw_tickers))
+                st.session_state.watchlists = watchlists
+                _autosave()
+                st.success(f"Imported {len(raw_tickers)} tickers into '{import_name}'")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Could not parse CSV: {e}")
+
+st.divider()
+
 if not watchlists:
     st.stop()
 
