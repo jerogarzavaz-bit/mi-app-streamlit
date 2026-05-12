@@ -221,17 +221,52 @@ with tab_edit:
                 st.rerun()
 
         st.subheader("Current Holdings")
+        st.caption("Click ✏️ on any row to correct the quantity, purchase price or date.")
+
+        editing = st.session_state.get("_editing_holding")
+
         for i, h in enumerate(portfolio):
-            c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
-            c1.write(f"**{h['ticker']}**")
-            c2.write(f"{h.get('quantity', 0)} shares")
-            c3.write(f"${h.get('purchase_price', 0):.2f} / share")
-            c4.write(h.get("purchase_date", ""))
-            if c5.button("🗑️", key=f"del_{i}"):
-                portfolio.pop(i)
-                st.session_state.portfolio = portfolio
-                _autosave()
-                st.rerun()
+            ticker = h.get("ticker", "")
+            qty    = h.get("quantity", 0)
+            price  = h.get("purchase_price", 0.0)
+            pdate  = h.get("purchase_date", "")
+
+            if editing == i:
+                # ── Inline edit form ──────────────────────────────────────────
+                with st.form(key=f"edit_form_{i}"):
+                    st.markdown(f"**Editing {ticker}**")
+                    ec1, ec2, ec3, ec4 = st.columns(4)
+                    e_qty   = ec1.number_input("Quantity",       min_value=0.001, value=float(qty),   step=1.0,  key=f"eq_{i}")
+                    e_price = ec2.number_input("Purchase Price ($)", min_value=0.0,  value=float(price), step=0.01, key=f"ep_{i}")
+                    e_date  = ec3.text_input("Purchase Date",    value=str(pdate), key=f"ed_{i}")
+                    ec4.write("")
+                    save_btn, cancel_btn = st.columns(2)
+                    if save_btn.form_submit_button("💾 Save", type="primary", use_container_width=True):
+                        portfolio[i]["quantity"]       = float(e_qty)
+                        portfolio[i]["purchase_price"] = float(e_price)
+                        portfolio[i]["purchase_date"]  = e_date.strip()
+                        st.session_state.portfolio     = portfolio
+                        st.session_state._editing_holding = None
+                        _autosave()
+                        st.rerun()
+                    if cancel_btn.form_submit_button("✕ Cancel", use_container_width=True):
+                        st.session_state._editing_holding = None
+                        st.rerun()
+            else:
+                # ── Read row ──────────────────────────────────────────────────
+                c1, c2, c3, c4, c5, c6 = st.columns([2, 1, 1, 1, 1, 1])
+                c1.write(f"**{ticker}**")
+                c2.write(f"{qty} shares")
+                c3.write(f"${price:.2f} / share")
+                c4.write(pdate)
+                if c5.button("✏️", key=f"edit_{i}", help="Edit this holding"):
+                    st.session_state._editing_holding = i
+                    st.rerun()
+                if c6.button("🗑️", key=f"del_{i}", help="Remove"):
+                    portfolio.pop(i)
+                    st.session_state.portfolio = portfolio
+                    _autosave()
+                    st.rerun()
     else:
         st.info("No holdings yet. Add your first position above or import from Yahoo Finance.")
 
