@@ -17,46 +17,71 @@ st.markdown("""
 
 portfolio = st.session_state.get("portfolio", [])
 
-def _refresh_prices(holdings):
+
+def _fetch_price(ticker: str, purchase_price: float) -> tuple[float, bool]:
+    """Return (live_price, is_live). Falls back to purchase_price only as last resort."""
+    try:
+        info, hist = get_stock_data(ticker, "5d")
+        # Try info fields first
+        price = None
+        if info:
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or \
+                    info.get("navPrice") or info.get("previousClose")
+        # Try last close from history if info didn't give us a price
+        if not price and hist is not None and len(hist) > 0:
+            price = float(hist["Close"].iloc[-1])
+        if price and price > 0:
+            return round(float(price), 2), True
+    except Exception:
+        pass
+    # Fallback: use purchase price (gain = 0, flagged as stale)
+    return purchase_price, False
+
+
+def _refresh_prices(holdings: list) -> list:
     updated = []
     for h in holdings:
-        try:
-            info, _ = get_stock_data(h["ticker"], "5d")
-            price = info.get("currentPrice") or info.get("regularMarketPrice") or h["purchase_price"]
-        except Exception:
-            price = h["purchase_price"]
-        qty        = h["quantity"]
-        cost       = h["purchase_price"] * qty
+        price, is_live = _fetch_price(h["ticker"], h.get("purchase_price", 0))
+        qty        = h.get("quantity", 0)
+        buy_price  = h.get("purchase_price", 0)
+        cost       = buy_price * qty
         value      = price * qty
         gain       = value - cost
         gain_pct   = (gain / cost * 100) if cost else 0
-        updated.append({**h, "current_price": round(price, 2),
-                        "current_value": round(value, 2), "cost_basis": round(cost, 2),
-                        "gain": round(gain, 2), "gain_pct": round(gain_pct, 2)})
+        updated.append({
+            **h,
+            "current_price":  price,
+            "is_live":        is_live,
+            "current_value":  round(value, 2),
+            "cost_basis":     round(cost, 2),
+            "gain":           round(gain, 2),
+            "gain_pct":       round(gain_pct, 2),
+        })
     return updated
+
 
 tab_ov, tab_edit, tab_rb, tab_risk = st.tabs(["Overview", "Edit Holdings", "Rebalance", "Risk Analytics"])
 
-# ── Edit Holdings ─────────────────────────────────────────────────────────────
+# ── Edit Holdings ──────────────────────────────────────────────────────────────
 with tab_edit:
     st.subheader("Add Position")
     with st.form("add_holding", clear_on_submit=True):
         c1, c2, c3, c4 = st.columns(4)
         new_ticker = c1.text_input("Ticker", placeholder="AAPL")
         new_qty    = c2.number_input("Quantity", min_value=0.001, value=1.0, step=1.0)
-        new_price  = c3.number_input("Avg Purchase Price ($)", min_value=0.01, value=100.0)
+        new_price  = c3.number_input("Purchase Price ($)", min_value=0.01, value=100.0, step=0.01)
         new_date   = c4.date_input("Purchase Date", value=date.today())
         add = st.form_submit_button("➕ Add Position", type="primary")
         if add and new_ticker:
             portfolio.append({
                 "ticker":         new_ticker.strip().upper(),
-                "quantity":       new_qty,
-                "purchase_price": new_price,
+                "quantity":       float(new_qty),
+                "purchase_price": float(new_price),
                 "purchase_date":  str(new_date),
             })
             st.session_state.portfolio = portfolio
             _autosave()
-            st.success(f"Added {new_ticker.upper()} ☁️")
+            st.success(f"Added {new_ticker.upper()} — {new_qty} shares @ ${new_price:.2f}")
             st.rerun()
 
     if portfolio:
@@ -64,8 +89,8 @@ with tab_edit:
         for i, h in enumerate(portfolio):
             c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
             c1.write(f"**{h['ticker']}**")
-            c2.write(f"{h['quantity']} shares")
-            c3.write(f"${h['purchase_price']:.2f}")
+            c2.write(f"{h.get('quantity', 0)} shares")
+            c3.write(f"${h.get('purchase_price', 0):.2f} / share")
             c4.write(h.get("purchase_date", ""))
             if c5.button("🗑️", key=f"del_{i}"):
                 portfolio.pop(i)
@@ -75,7 +100,7 @@ with tab_edit:
     else:
         st.info("No holdings yet. Add your first position above.")
 
-# ── Overview ──────────────────────────────────────────────────────────────────
+# ── Overview ───────────────────────────────────────────────────────────────────
 with tab_ov:
     if not portfolio:
         st.markdown("""
@@ -83,9 +108,12 @@ with tab_ov:
           No holdings yet. Go to <strong>Edit Holdings</strong> to add your positions.
         </div>""", unsafe_allow_html=True)
     else:
-        with st.spinner("Refreshing prices…"):
+        with st.spinner("Fetching live prices…"):
             holdings = _refresh_prices(portfolio)
-        st.session_state.portfolio = holdings
+
+        stale = [h["ticker"] for h in holdings if not h.get("is_live")]
+        if stale:
+            st.warning(f"⚠️ Could not fetch live price for: {', '.join(stale)} — showing purchase price as fallback.")
 
         total_val  = sum(h["current_value"] for h in holdings)
         total_cost = sum(h["cost_basis"]    for h in holdings)
@@ -103,27 +131,33 @@ with tab_ov:
             st.plotly_chart(portfolio_pie(holdings), use_container_width=True)
 
         with col_table:
-            df = pd.DataFrame([{
-                "Ticker":     h["ticker"],
-                "Qty":        h["quantity"],
-                "Avg Cost":   h["purchase_price"],
-                "Curr Price": h["current_price"],
-                "Value":      h["current_value"],
-                "Gain $":     h["gain"],
-                "Gain %":     h["gain_pct"],
-                "Weight %":   round(h["current_value"] / total_val * 100, 1) if total_val else 0,
-            } for h in holdings])
+            rows = []
+            for h in holdings:
+                live_tag = "🟢" if h.get("is_live") else "🔴"
+                rows.append({
+                    "Ticker":          h["ticker"],
+                    "Qty":             h.get("quantity", 0),
+                    "Purchase Price":  h.get("purchase_price", 0),
+                    "Live Price":      h["current_price"],
+                    "":                live_tag,
+                    "Value":           h["current_value"],
+                    "Gain $":          h["gain"],
+                    "Gain %":          h["gain_pct"],
+                    "Weight %":        round(h["current_value"] / total_val * 100, 1) if total_val else 0,
+                })
+            df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True,
                 column_config={
-                    "Avg Cost":   st.column_config.NumberColumn(format="$%.2f"),
-                    "Curr Price": st.column_config.NumberColumn(format="$%.2f"),
-                    "Value":      st.column_config.NumberColumn(format="$%.2f"),
-                    "Gain $":     st.column_config.NumberColumn(format="$%+.2f"),
-                    "Gain %":     st.column_config.NumberColumn(format="%.2f%%"),
-                    "Weight %":   st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f%%"),
+                    "Purchase Price": st.column_config.NumberColumn(format="$%.2f",  help="Price you paid per share"),
+                    "Live Price":     st.column_config.NumberColumn(format="$%.2f",  help="Current market price  🟢=live  🔴=unavailable"),
+                    "Value":          st.column_config.NumberColumn(format="$%.2f"),
+                    "Gain $":         st.column_config.NumberColumn(format="$%+.2f"),
+                    "Gain %":         st.column_config.NumberColumn(format="%.2f%%"),
+                    "Weight %":       st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f%%"),
                 })
+            st.caption("🟢 Live price  ·  🔴 Could not fetch — showing purchase price (gain = $0)")
 
-# ── Rebalance ─────────────────────────────────────────────────────────────────
+# ── Rebalance ──────────────────────────────────────────────────────────────────
 with tab_rb:
     st.subheader("Rebalancing Advisor")
     if not portfolio:
@@ -137,7 +171,7 @@ with tab_rb:
                 holdings = _refresh_prices(portfolio)
                 total    = sum(h["current_value"] for h in holdings)
                 ctx = "PORTFOLIO:\n" + "\n".join(
-                    f"{h['ticker']}: {h['quantity']} shares @ ${h['current_price']:.2f} = ${h['current_value']:,.0f} ({h['current_value']/total*100:.1f}%)"
+                    f"{h['ticker']}: {h.get('quantity',0)} shares @ ${h['current_price']:.2f} = ${h['current_value']:,.0f} ({h['current_value']/total*100:.1f}%)"
                     for h in holdings)
                 profile = st.session_state.get("profile", {})
                 prompt  = f"{ctx}\n\nProfile: Risk={profile.get('riesgo','moderate')}, Style={profile.get('estilo','mixed')}, Objective={profile.get('objetivo','growth')}\n\nProvide specific rebalancing recommendations: overweight/underweight positions, concentration risks, suggested target weights, and 2-3 tactical changes."
@@ -146,7 +180,7 @@ with tab_rb:
                 if resp:
                     st.markdown(resp)
 
-# ── Risk Analytics ────────────────────────────────────────────────────────────
+# ── Risk Analytics ─────────────────────────────────────────────────────────────
 with tab_risk:
     st.subheader("Risk Analytics")
     if not portfolio:
@@ -155,13 +189,11 @@ with tab_risk:
         holdings = _refresh_prices(portfolio)
         total    = sum(h["current_value"] for h in holdings)
 
-        # Sector & concentration
-        tickers   = [h["ticker"] for h in holdings]
-        sectors   = {}
+        sectors = {}
         for h in holdings:
             try:
                 info, _ = get_stock_data(h["ticker"], "5d")
-                sec = info.get("sector", "Unknown") if info else "Unknown"
+                sec = (info or {}).get("sector", "Unknown")
             except Exception:
                 sec = "Unknown"
             sectors[sec] = sectors.get(sec, 0) + h.get("current_value", 0)
