@@ -84,8 +84,8 @@ def sector_bar(sector_returns: dict) -> go.Figure:
     colors  = [COLOR_SUCCESS if r >= 0 else COLOR_DANGER for r in returns]
     fig = go.Figure(go.Bar(x=returns, y=sectors, orientation="h",
         marker_color=colors, text=[f"{r:+.1f}%" for r in returns], textposition="outside"))
-    fig.update_layout(**_DARK, title="Sector Returns",
-        xaxis_title="Return (%)", height=430, margin=dict(l=160, r=60))
+    fig.update_layout(**{**_DARK, "margin": dict(l=160, r=60, t=50, b=40)},
+        title="Sector Returns", xaxis_title="Return (%)", height=430)
     return fig
 
 
