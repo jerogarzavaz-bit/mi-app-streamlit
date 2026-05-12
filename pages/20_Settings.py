@@ -3,6 +3,10 @@ import json
 from utils.auth import is_admin, hash_password
 from utils.db import save_user_data, load_user_data, is_configured
 
+def _autosave():
+    if is_configured():
+        save_user_data(st.session_state.get("username", ""))
+
 st.markdown("""
 <div class='page-header'>
   <div class='page-title'>⚙️ Settings</div>
@@ -32,6 +36,7 @@ with st.container():
     if col_btn.button("Save", key="save_anthropic"):
         api_keys["anthropic"] = new_anthropic.strip()
         st.session_state.api_keys = api_keys
+        _autosave()
         st.success("Anthropic key saved!" if new_anthropic else "Key cleared.")
         st.rerun()
 
@@ -48,6 +53,7 @@ with st.container():
     if col_btn.button("Save", key="save_av"):
         api_keys["alpha_vantage"] = new_av.strip()
         st.session_state.api_keys = api_keys
+        _autosave()
         st.success("Alpha Vantage key saved!")
 
 st.divider()
@@ -63,6 +69,7 @@ with st.container():
     if col_btn.button("Save", key="save_fred"):
         api_keys["fred"] = new_fred.strip()
         st.session_state.api_keys = api_keys
+        _autosave()
         st.success("FRED key saved!")
 
 st.divider()
@@ -78,12 +85,14 @@ new_fmp = col_key.text_input("FMP key", type="password",
 if col_btn.button("Save", key="save_fmp"):
     api_keys["fmp"] = new_fmp.strip()
     st.session_state.api_keys = api_keys
+    _autosave()
     st.success("FMP key saved!")
 
 provider = st.radio("Data Provider", ["yfinance (default, free)", "Financial Modeling Prep (FMP)"],
     index=0 if st.session_state.get("data_provider","yfinance") == "yfinance" else 1)
 if st.button("Save provider"):
     st.session_state.data_provider = "yfinance" if "yfinance" in provider else "fmp"
+    _autosave()
     st.success(f"Provider set to: {'yfinance' if 'yfinance' in provider else 'FMP'}")
 st.info(f"**{st.session_state.get('data_provider','yfinance')}** is active as the primary data source.")
 

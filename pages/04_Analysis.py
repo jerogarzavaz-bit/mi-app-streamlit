@@ -4,7 +4,12 @@ from utils.plots import price_chart, candlestick_chart
 from utils.screener import score_stock
 from utils.ai import has_key, no_key_banner, analyze_stock
 from utils.config import COLOR_SUCCESS, COLOR_DANGER, COLOR_WARNING
+from utils.db import save_user_data, is_configured
 from datetime import date
+
+def _autosave():
+    if is_configured():
+        save_user_data(st.session_state.get("username", ""))
 
 st.markdown("""
 <div class='page-header'>
@@ -142,4 +147,5 @@ else:
             "text":    full_text,
             "info":    {k: info.get(k) for k in ("sector","industry","currentPrice","marketCap")},
         })
+        _autosave()
         st.success("Analysis saved to History.")

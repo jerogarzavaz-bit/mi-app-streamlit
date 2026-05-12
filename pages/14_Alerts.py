@@ -2,6 +2,11 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from utils.data import get_stock_data
+from utils.db import save_user_data, is_configured
+
+def _autosave():
+    if is_configured():
+        save_user_data(st.session_state.get("username", ""))
 
 st.markdown("""
 <div class='page-header'>
@@ -55,6 +60,7 @@ with st.expander("➕ Add New Alert", expanded=not alerts):
                     "created_at": datetime.now().isoformat(),
                 })
                 st.session_state.alerts = alerts
+                _autosave()
                 st.success(f"Alert created for {ticker.upper()}")
                 st.rerun()
 
@@ -87,6 +93,7 @@ else:
         if c5.button("🗑️", key=f"del_alert_{i}"):
             alerts.pop(i)
             st.session_state.alerts = alerts
+            _autosave()
             st.rerun()
 
 # ── Triggered Alerts ──────────────────────────────────────────────────────────
@@ -104,4 +111,5 @@ if triggered:
 
     if st.button("Clear Triggered Alerts"):
         st.session_state.alerts = [a for a in alerts if not a.get("triggered")]
+        _autosave()
         st.rerun()

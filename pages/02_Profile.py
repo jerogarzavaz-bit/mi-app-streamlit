@@ -1,4 +1,9 @@
 import streamlit as st
+from utils.db import save_user_data, is_configured
+
+def _autosave():
+    if is_configured():
+        save_user_data(st.session_state.get("username", ""))
 
 st.markdown("""
 <div class='page-header'>
@@ -200,5 +205,6 @@ elif step == 6:
         st.session_state.profile_step = 5; st.rerun()
     if col2.button("✅ Save Profile", type="primary"):
         st.session_state.profile = p
+        _autosave()
         st.success("Profile saved! All AI analyses will now be personalized for you.")
         st.session_state.profile_step = 1
