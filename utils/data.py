@@ -16,6 +16,32 @@ def get_stock_data(ticker: str, period: str = PERIOD_DAYS):
         return None, None
 
 
+@st.cache_data(ttl=300)  # 5-min cache; short so stale-None results expire quickly
+def get_current_price(ticker: str) -> float | None:
+    """
+    Fetch only the latest price for a ticker.
+    Tries history (most reliable) then fast_info.
+    Returns None if the ticker is unknown — does NOT fall back to purchase price.
+    """
+    try:
+        hist = yf.Ticker(ticker).history(period="5d")
+        if hist is not None and len(hist) > 0:
+            price = float(hist["Close"].iloc[-1])
+            if price > 0:
+                return round(price, 4)
+    except Exception:
+        pass
+    try:
+        fi = yf.Ticker(ticker).fast_info
+        for attr in ("last_price", "previous_close", "open"):
+            p = getattr(fi, attr, None)
+            if p and float(p) > 0:
+                return round(float(p), 4)
+    except Exception:
+        pass
+    return None
+
+
 @st.cache_data(ttl=CACHE_TTL)
 def get_market_overview():
     result = {}

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from utils.data import get_stock_data
+from utils.data import get_stock_data, get_current_price
 from utils.plots import portfolio_pie
 from utils.db import save_user_data, is_configured
 
@@ -20,32 +20,9 @@ portfolio = st.session_state.get("portfolio", [])
 
 def _fetch_price(ticker: str, purchase_price: float) -> tuple[float, bool]:
     """Return (live_price, is_live). Falls back to purchase_price only as last resort."""
-    import yfinance as yf
-
-    # 1. fast_info.last_price — most reliable, works for stocks + ETFs + leveraged ETFs
-    try:
-        fi = yf.Ticker(ticker).fast_info
-        p = getattr(fi, "last_price", None) or getattr(fi, "previous_close", None)
-        if p and float(p) > 0:
-            return round(float(p), 2), True
-    except Exception:
-        pass
-
-    # 2. Cached get_stock_data: try info fields then last hist close
-    try:
-        info, hist = get_stock_data(ticker, "5d")
-        price = None
-        if info:
-            price = (info.get("currentPrice") or info.get("regularMarketPrice") or
-                     info.get("navPrice") or info.get("previousClose") or
-                     info.get("regularMarketPreviousClose"))
-        if not price and hist is not None and len(hist) > 0:
-            price = float(hist["Close"].iloc[-1])
-        if price and float(price) > 0:
-            return round(float(price), 2), True
-    except Exception:
-        pass
-
+    price = get_current_price(ticker)
+    if price and price > 0:
+        return price, True
     return purchase_price, False
 
 
