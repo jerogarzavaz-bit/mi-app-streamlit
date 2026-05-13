@@ -6,6 +6,16 @@ from utils.data import get_stock_data, get_current_price, get_portfolio_history
 from utils.plots import portfolio_pie, portfolio_history_chart
 from utils.db import save_user_data, is_configured
 
+@st.cache_data(ttl=300)
+def _cached_price_row(ticker: str):
+    """Fetch price + info for one ticker, cached 5 min."""
+    price = get_current_price(ticker)
+    try:
+        info, _ = get_stock_data(ticker, "5d")
+    except Exception:
+        info = {}
+    return price, info or {}
+
 username = st.session_state.get("username", "")
 
 def _autosave():
@@ -79,7 +89,9 @@ with tab_ov:
 
         col_chart, col_table = st.columns([1, 2])
         with col_chart:
-            st.plotly_chart(portfolio_pie(holdings), use_container_width=True)
+            pie_data = [h for h in holdings if h.get("current_value", 0) > 0]
+            if pie_data:
+                st.plotly_chart(portfolio_pie(pie_data), use_container_width=True)
         with col_table:
             rows = []
             for h in holdings:
@@ -125,11 +137,8 @@ with tab_ov:
             total = sum(h["current_value"] for h in holdings) or 1
             sectors = {}
             for h in holdings:
-                try:
-                    info, _ = get_stock_data(h["ticker"], "5d")
-                    sec = (info or {}).get("sector", "Unknown")
-                except Exception:
-                    sec = "Unknown"
+                _, info = _cached_price_row(h["ticker"])
+                sec = info.get("sector", "Unknown") or "Unknown"
                 sectors[sec] = sectors.get(sec, 0) + h.get("current_value", 0)
             st.write("**Sector Exposure**")
             for sec, val in sorted(sectors.items(), key=lambda x: -x[1]):
@@ -356,7 +365,8 @@ with tab_wl:
     wl_name_new = col1.text_input("New watchlist name", placeholder="Tech Picks, Dividend Plays…",
                                    label_visibility="collapsed", key="wl_hub_name")
     if col2.button("➕ Create", key="wl_hub_create") and wl_name_new:
-        if wl_name_new not in watchlists:
+        wl_name_new = wl_name_new.strip()
+        if wl_name_new.lower() not in {k.lower() for k in watchlists}:
             watchlists[wl_name_new] = []
             st.session_state.watchlists = watchlists
             _autosave()
@@ -412,13 +422,7 @@ with tab_wl:
             with st.spinner(f"Loading live prices for {len(tickers)} tickers…"):
                 rows = []
                 for t in tickers:
-                    price = get_current_price(t)
-                    try:
-                        info, _ = get_stock_data(t, "5d")
-                    except Exception:
-                        info = {}
-                    if info is None:
-                        info = {}
+                    price, info = _cached_price_row(t)
                     curr = price or info.get("currentPrice") or info.get("regularMarketPrice") or 0
                     prev = info.get("previousClose", curr) or curr
                     chg  = ((curr - prev) / prev * 100) if prev else 0
@@ -550,11 +554,11 @@ with tab_alerts:
             threshold  = a["threshold"]
             if curr_price and threshold:
                 if a["condition"] == "Price >":
-                    pct_away = (threshold - curr_price) / threshold * 100 if threshold else 0
+                    pct_away = (threshold - curr_price) / curr_price * 100
                     prox_str = f"${curr_price:.2f} — {abs(pct_away):.1f}% {'above ✅' if curr_price >= threshold else 'below target'}"
                     prox_col = "#22c55e" if curr_price >= threshold else ("#f59e0b" if abs(pct_away) < 5 else "#8aadcc")
                 else:
-                    pct_away = (curr_price - threshold) / threshold * 100 if threshold else 0
+                    pct_away = (curr_price - threshold) / curr_price * 100
                     prox_str = f"${curr_price:.2f} — {abs(pct_away):.1f}% {'below ✅' if curr_price <= threshold else 'above target'}"
                     prox_col = "#22c55e" if curr_price <= threshold else ("#f59e0b" if abs(pct_away) < 5 else "#8aadcc")
             else:

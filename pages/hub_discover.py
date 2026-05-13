@@ -71,7 +71,7 @@ with tab_screen:
             from datetime import date
             st.session_state.screen_history.append({"date": date.today().isoformat(),
                                                      "tickers": tickers, "count": len(results)})
-            df = pd.DataFrame(results)
+            df = pd.DataFrame(results).sort_values("composite", ascending=False).reset_index(drop=True)
             t1 = df[df.tier == 1]; t2 = df[df.tier == 2]; t3 = df[df.tier == 3]
 
             c1, c2, c3, c4 = st.columns(4)

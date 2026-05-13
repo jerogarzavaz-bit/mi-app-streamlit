@@ -378,6 +378,8 @@ with tab_memos:
                     st.download_button("⬇️ Download Memo", memo,
                                        file_name=f"memo_{analysis['ticker']}_{analysis['date']}.txt",
                                        key="ai_dl_memo")
+                else:
+                    st.error("Memo generation failed. Check your Anthropic API key.")
 
     with memo_sub2:
         if not has_key():
@@ -542,10 +544,16 @@ with tab_bt:
                     rsi = compute_rsi(prices.iloc[:i+1], rsi_period)
                     signals.iloc[i] = 1 if rsi < rsi_buy else (-1 if rsi > rsi_sell else 0)
             elif "Golden Cross" in bt_strategy:
+                prev_fast = prev_slow = None
                 for i in range(ma_slow, n):
                     fast = prices.iloc[i-ma_fast:i].mean()
                     slow = prices.iloc[i-ma_slow:i].mean()
-                    signals.iloc[i] = 1 if fast > slow else -1
+                    if prev_fast is not None:
+                        if prev_fast <= prev_slow and fast > slow:
+                            signals.iloc[i] = 1   # golden cross — buy
+                        elif prev_fast >= prev_slow and fast < slow:
+                            signals.iloc[i] = -1  # death cross — sell
+                    prev_fast, prev_slow = fast, slow
             elif "Momentum" in bt_strategy:
                 for i in range(mom_period, n):
                     ret = (prices.iloc[i] / prices.iloc[i - mom_period] - 1) * 100
