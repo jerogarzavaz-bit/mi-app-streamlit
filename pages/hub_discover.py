@@ -219,7 +219,10 @@ with tab_etf:
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
             if len(hist_data) >= 2 and st.checkbox("Show Correlation Heatmap", key="disc_etf_corr"):
-                st.plotly_chart(correlation_heatmap(hist_data), use_container_width=True)
+                closes = pd.DataFrame({t: h["Close"] for t, h in hist_data.items()}).dropna()
+                if len(closes) > 1:
+                    st.plotly_chart(correlation_heatmap(closes.pct_change().dropna().corr()),
+                                    use_container_width=True)
 
             if has_key():
                 if st.button("🤖 AI ETF Commentary", key="disc_etf_ai"):
