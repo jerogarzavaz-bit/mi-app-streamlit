@@ -37,20 +37,21 @@ def _get_credentials() -> dict:
         return fs_creds
 
     # Last-resort fallback — hardcoded hashes (safe: bcrypt can't be reversed)
-    # admin → Admin12345 | guest01-10 → Bull01Guest … Bull10Guest
     fallback = {
         "usernames": {
-            "admin":   {"name": "Admin",    "email": "admin@thebullmonkey.com",   "password": "$2b$12$btb10qFHBD2bRIyKhkZ4SuVB7H8Lpmaly.z6Ojk5icbsGYFhiWwyO", "role": "admin"},
-            "guest01": {"name": "Guest 01", "email": "guest01@thebullmonkey.com", "password": "$2b$12$ezybItuhJfYaWBLm4JBbmOSO2Pis142OwASHqy8Ba4OZI2xFRb1.u", "role": "guest"},
-            "guest02": {"name": "Guest 02", "email": "guest02@thebullmonkey.com", "password": "$2b$12$1Kj.eHijxmsZe6mDlHb4pOK0b4uqZiF3/xDa.p72YvdEE6qn4VlyO", "role": "guest"},
-            "guest03": {"name": "Guest 03", "email": "guest03@thebullmonkey.com", "password": "$2b$12$loPehOwKfINVpq.rhfQYFePHYz/vXDqpfgYiD0lptuhZgkdK/G0I6", "role": "guest"},
-            "guest04": {"name": "Guest 04", "email": "guest04@thebullmonkey.com", "password": "$2b$12$FAPU8NlTGIxf0CxIq4ZHwuEXl8S1uCVapHXmgxaVXEJm.0jnLfrG2", "role": "guest"},
-            "guest05": {"name": "Guest 05", "email": "guest05@thebullmonkey.com", "password": "$2b$12$UVU14yBp60BMz7uExg17GukF.S4EDRS.OhefBFneXpE9KVO7ACKzu",  "role": "guest"},
-            "guest06": {"name": "Guest 06", "email": "guest06@thebullmonkey.com", "password": "$2b$12$fJDkDOYpqinmOlGPFJ5d4u5lJYYjb5EF6CLlJRe1fpd9xxG0fq28G", "role": "guest"},
-            "guest07": {"name": "Guest 07", "email": "guest07@thebullmonkey.com", "password": "$2b$12$b8jAziWn11oAfJUlHlAsF.1TNLTjKMumKvUvNjUWgjXl.M8anhIhu",  "role": "guest"},
-            "guest08": {"name": "Guest 08", "email": "guest08@thebullmonkey.com", "password": "$2b$12$KWN4eLqJICvi/hoHtf/.LO3aKpmD1BprxJc5hRswdmm7afRPZM2Fm",  "role": "guest"},
-            "guest09": {"name": "Guest 09", "email": "guest09@thebullmonkey.com", "password": "$2b$12$V5mAgnxm7MfqwkXjOj5sReb5EEz8mqS0We6tKggh9UkRfiJ2zTJKu",  "role": "guest"},
-            "guest10": {"name": "Guest 10", "email": "guest10@thebullmonkey.com", "password": "$2b$12$qhxR./ZBUIKLDoywrqCQEu.72XSMe7R8AG9NB9fMjGVgoVun5ZylW",  "role": "guest"},
+            "admin":   {"name": "Admin",   "email": "admin@thebullmonkey.com",   "password": "$2b$12$btb10qFHBD2bRIyKhkZ4SuVB7H8Lpmaly.z6Ojk5icbsGYFhiWwyO", "role": "admin"},
+            "pipo":    {"name": "Pipo",    "email": "pipo@thebullmonkey.com",    "password": "$2b$12$UXiuFqWHAOOWQ3yCzvIKueShdcEczM1xA/.TLgV9jFze/4TbbZNpm",  "role": "guest"},
+            "roro":    {"name": "Roro",    "email": "roro@thebullmonkey.com",    "password": "$2b$12$DQ1JSGKtp7A.KatpVareKONPJvYZOw.7HFuK12TzV9X2wkERuOEIG",  "role": "guest"},
+            "berni":   {"name": "Berni",   "email": "berni@thebullmonkey.com",   "password": "$2b$12$2G/bLSfX3ZQhZXmgDGXbZesqyc5bx/Z8Rcq9eygCixcY09J/fV842",  "role": "guest"},
+            "juan":    {"name": "Juan",    "email": "juan@thebullmonkey.com",    "password": "$2b$12$q5UJUNhpsV8uv1qKS7c2VOepFJpkLEcsihoISRSwMICD8xyxVmvu.",   "role": "guest"},
+            "bonji":   {"name": "Bonji",   "email": "bonji@thebullmonkey.com",   "password": "$2b$12$SDzcNTIFJO5lEDi1HHcD.OCyiJfMih31m3iESrpgpv6zyC0MI99c2",  "role": "guest"},
+            "insky":   {"name": "Insky",   "email": "insky@thebullmonkey.com",   "password": "$2b$12$HDyiLTDJlbbrkwZMtev3meCap0ID4ps2FqEpcaYaPTMvQe2PO/pd6",  "role": "guest"},
+            "marito":  {"name": "Marito",  "email": "marito@thebullmonkey.com",  "password": "$2b$12$WmFNfIgWL4zG.JGMZ/zegu4qQJgzV72kLHfae0h9y4jxVJSB3Bdj.", "role": "guest"},
+            "corve":   {"name": "Corve",   "email": "corve@thebullmonkey.com",   "password": "$2b$12$rMEo/X6aTN4/V70/P5GEYOpxHBGC.xPbp2zG1BdDBUAz6cIlfXScu", "role": "guest"},
+            "borre":   {"name": "Borre",   "email": "borre@thebullmonkey.com",   "password": "$2b$12$2m.F9vKEwgWvpVKQy7SOCe4bIWnygYJopWV5CaqzXBJloBYfxQ10G",  "role": "guest"},
+            "zata":    {"name": "Zata",    "email": "zata@thebullmonkey.com",    "password": "$2b$12$dR4pj25finzbseMGzv3dFuIU958aSWAi.tEuVWFkdp9B8XjAdNiEu",  "role": "guest"},
+            "luis":    {"name": "Luis",    "email": "luis@thebullmonkey.com",    "password": "$2b$12$B0JvwajIk4gth7hfrRjF7uJHoM0mXLfXHfkL2Yb/mk4Ew4XkXRhu2",  "role": "guest"},
+            "santino": {"name": "Santino", "email": "santino@thebullmonkey.com", "password": "$2b$12$o6R5F7nXhFsvhpQlymAtyOXekh7eda8TuRq3KqCgl7n5.aVGARzRC",  "role": "guest"},
         }
     }
     # Seed Firestore with fallback so next load uses Firestore
