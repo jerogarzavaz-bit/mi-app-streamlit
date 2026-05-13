@@ -65,7 +65,7 @@ with col_left:
           </div>
         </div>""", unsafe_allow_html=True)
         if st.button("+ Add Holdings", type="primary"):
-            st.switch_page("pages/06_Portfolio.py")
+            st.switch_page("pages/hub_portfolio.py")
     else:
         total = sum(h.get("current_value", 0) for h in portfolio)
         cost  = sum(h.get("cost_basis", 0)    for h in portfolio)
@@ -115,7 +115,7 @@ with col_left:
 
         if len(portfolio) > 5:
             if st.button(f"View all {len(portfolio)} positions →", type="secondary"):
-                st.switch_page("pages/06_Portfolio.py")
+                st.switch_page("pages/hub_portfolio.py")
 
 with col_right:
     # ── Active Alerts ──────────────────────────────────────────────────────────
@@ -181,10 +181,10 @@ col_qs, col_feat = st.columns(2, gap="large")
 with col_qs:
     st.markdown("<div class='y-section-label'>Quick Start</div>", unsafe_allow_html=True)
     steps = [
-        ("Add holdings in <strong>Portfolio</strong>",           "pages/06_Portfolio.py"),
-        ("Run the <strong>Screener</strong> for top picks",       "pages/03_Screener.py"),
-        ("Deep <strong>Analysis</strong> with AI scoring",        "pages/04_Analysis.py"),
-        ("Generate <strong>Morning Brief</strong> by email",      "pages/21_Morning_Brief.py"),
+        ("Add holdings in <strong>My Portfolio</strong>",          "pages/hub_portfolio.py"),
+        ("Run the <strong>Screener</strong> for top picks",       "pages/hub_discover.py"),
+        ("Deep <strong>Analysis</strong> with AI scoring",        "pages/hub_ai.py"),
+        ("Generate <strong>Morning Brief</strong> by email",      "pages/hub_intelligence.py"),
     ]
     for i, (text, page) in enumerate(steps, 1):
         st.markdown(f"""

@@ -14,37 +14,38 @@ st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 st.markdown("""
 <style>
 @keyframes loginIn {
-    from { opacity: 0; transform: translateY(20px) scale(0.98); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes floatY {
-    0%, 100% { transform: translateY(0px); }
-    50%       { transform: translateY(-10px); }
+@keyframes breathe {
+    0%, 100% { transform: scale(1) translateY(0px); }
+    50%       { transform: scale(1.02) translateY(-6px); }
 }
-.login-wrap { animation: loginIn 0.5s cubic-bezier(0.16,1,0.3,1) both; }
+.login-wrap { animation: loginIn 0.4s cubic-bezier(0.16,1,0.3,1) both; }
 
 div[data-testid="stForm"] {
-    max-width: 380px;
+    max-width: 360px;
     margin: 0 auto;
-    background: var(--bg-surface);
+    background: var(--bg-elevated);
     border: 1px solid var(--border-default);
-    border-radius: 16px;
-    padding: 28px 28px 22px 28px;
-    box-shadow: var(--shadow-lg);
+    border-radius: 20px;
+    padding: 28px 26px 22px;
+    box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 div[data-testid="stForm"] input {
-    background: var(--bg-base) !important;
+    background: var(--bg-surface) !important;
     border: 1px solid var(--border-default) !important;
     color: var(--text-primary) !important;
-    border-radius: var(--radius-sm) !important;
-    font-size: 13.5px !important;
-    font-family: 'Space Grotesk', sans-serif !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-family: 'Inter', sans-serif !important;
     padding: 9px 13px !important;
-    transition: border-color 0.15s !important;
+    transition: all 0.12s !important;
 }
 div[data-testid="stForm"] input:focus {
-    border-color: var(--border-focus) !important;
-    box-shadow: 0 0 0 3px rgba(79,142,247,0.08) !important;
+    border-color: rgba(97,114,243,0.5) !important;
+    box-shadow: 0 0 0 3px rgba(97,114,243,0.07) !important;
+    background: var(--bg-overlay) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -88,62 +89,54 @@ Y_LOGO_SVG = """<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmln
 
 # ── Login page ─────────────────────────────────────────────────────────────────
 def _show_login(authenticator):
-    st.markdown(f"""
+    st.markdown("""
     <div class='login-wrap'>
-    <div style='text-align:center;padding:60px 0 40px 0;'>
+    <div style='text-align:center;padding:64px 0 40px;'>
 
-      <!-- Logo mark -->
+      <!-- Logo — restrained, premium -->
       <div style='display:inline-flex;align-items:center;justify-content:center;
-                  width:72px;height:72px;
-                  background:linear-gradient(135deg,#4f8ef7,#9c6cff);
-                  border-radius:22px;
-                  box-shadow:0 8px 32px rgba(79,142,247,0.35);
-                  margin:0 auto 20px auto;
-                  font-size:38px;line-height:1;
-                  animation:floatY 4s ease-in-out infinite;'>🐵</div>
+                  width:64px;height:64px;
+                  background:linear-gradient(145deg,#18181B 0%,#1F1F24 100%);
+                  border:1px solid rgba(97,114,243,0.2);
+                  border-radius:18px;
+                  box-shadow:0 0 0 1px rgba(255,255,255,0.04),
+                             0 8px 32px rgba(0,0,0,0.5),
+                             0 0 40px rgba(97,114,243,0.1);
+                  margin:0 auto 24px;
+                  font-size:32px;line-height:1;
+                  animation:breathe 5s ease-in-out infinite;'>🐵</div>
 
-      <!-- Wordmark -->
-      <div style='font-family:"Plus Jakarta Sans",sans-serif;font-size:28px;font-weight:900;
-                  background:linear-gradient(135deg,#f0f0f6 30%,#9c6cff 100%);
-                  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-                  background-clip:text;letter-spacing:-1px;line-height:1.1;margin-bottom:8px;'>
+      <!-- Wordmark — editorial -->
+      <div style='font-family:"Syne","Inter",sans-serif;font-size:26px;font-weight:800;
+                  color:#FAFAFA;letter-spacing:-1px;line-height:1.1;margin-bottom:6px;'>
         The Bull Monkey
       </div>
 
-      <div style='font-size:11px;color:#3d4452;letter-spacing:3px;font-weight:700;
-                  text-transform:uppercase;font-family:"Space Grotesk",sans-serif;
-                  margin-bottom:6px;'>AI Financial Intelligence</div>
-
-      <div style='display:flex;justify-content:center;gap:24px;margin-top:16px;'>
-        <span style='color:#252830;font-size:11px;font-family:"Space Grotesk",sans-serif;'>
-          ⚡ Real-Time Data
-        </span>
-        <span style='color:#252830;font-size:11px;font-family:"Space Grotesk",sans-serif;'>
-          ◆ Claude AI
-        </span>
-        <span style='color:#252830;font-size:11px;font-family:"Space Grotesk",sans-serif;'>
-          ☁ Cloud Sync
-        </span>
+      <!-- Tagline — subtle -->
+      <div style='font-size:10.5px;color:#3F3F46;letter-spacing:2px;font-weight:500;
+                  text-transform:uppercase;font-family:"Inter",sans-serif;margin-bottom:0;'>
+        AI Financial Intelligence
       </div>
+
     </div>
     </div>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1.4, 1])
+    col1, col2, col3 = st.columns([1, 1.35, 1])
     with col2:
         authenticator.login(fields={
             "Form name": "Sign in",
             "Username":  "Username",
             "Password":  "Password",
-            "Login":     "Sign in →",
+            "Login":     "Continue →",
         })
         status = st.session_state.get("authentication_status")
         if status is False:
-            st.error("Incorrect credentials. Please try again.")
+            st.error("Incorrect credentials.")
 
     st.markdown("""
-    <div style='text-align:center;color:#252830;font-size:11px;margin-top:60px;
-                font-family:"Space Grotesk",sans-serif;letter-spacing:0.3px;'>
+    <div style='text-align:center;color:#3F3F46;font-size:10.5px;margin-top:56px;
+                font-family:"Inter",sans-serif;letter-spacing:0.2px;'>
       The Bull Monkey &nbsp;·&nbsp; Powered by Claude AI &nbsp;·&nbsp; © 2025
     </div>
     """, unsafe_allow_html=True)
@@ -250,22 +243,22 @@ with st.sidebar:
     # Branding
     st.markdown(f"""
     <div class='y-sidebar-header'>
-      <div style='width:30px;height:30px;flex-shrink:0;
-                  background:linear-gradient(135deg,#4f8ef7,#9c6cff);
+      <div style='width:28px;height:28px;flex-shrink:0;
+                  background:linear-gradient(145deg,#1F1F24,#27272A);
+                  border:1px solid rgba(97,114,243,0.2);
                   border-radius:8px;
                   display:flex;align-items:center;justify-content:center;
-                  font-size:16px;line-height:1;
-                  box-shadow:0 2px 8px rgba(79,142,247,0.3);'>🐵</div>
+                  font-size:15px;line-height:1;'>🐵</div>
       <div>
-        <div class='y-wordmark' style='font-size:13px;letter-spacing:-0.4px;'>The Bull Monkey</div>
+        <div class='y-wordmark'>The Bull Monkey</div>
         <div class='y-tagline'>AI Financial Intelligence</div>
       </div>
     </div>
 
     <!-- User badge -->
     <div class='y-user-badge'>
-      <div style='font-size:9px;font-weight:700;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;font-family:"Space Grotesk",sans-serif;'>Signed in as</div>
-      <div style='font-size:13px;font-weight:600;color:var(--text-primary);font-family:"Space Grotesk",sans-serif;'>{display_name}</div>
+      <div style='font-size:9px;font-weight:500;color:var(--text-disabled);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:3px;font-family:"Inter",sans-serif;'>Signed in as</div>
+      <div style='font-size:12.5px;font-weight:500;color:var(--text-secondary);font-family:"Inter",sans-serif;letter-spacing:-0.1px;'>{display_name}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -303,43 +296,18 @@ with st.sidebar:
 
 
 # ── Navigation ─────────────────────────────────────────────────────────────────
-pages = {
-    "Dashboard": [
-        st.Page("pages/01_Main.py",            title="Overview",         icon="⬡",  default=True),
-        st.Page("pages/21_Morning_Brief.py",   title="Morning Brief",    icon="☀️"),
-    ],
-    "Portfolio": [
-        st.Page("pages/06_Portfolio.py",       title="Holdings",         icon="💼"),
-        st.Page("pages/18_Watchlist.py",       title="Watchlist",        icon="◎"),
-        st.Page("pages/14_Alerts.py",          title="Alerts",           icon="◈"),
-        st.Page("pages/02_Profile.py",         title="Profile",          icon="◉"),
-    ],
-    "Research": [
-        st.Page("pages/04_Analysis.py",        title="Deep Analysis",    icon="◆"),
-        st.Page("pages/03_Screener.py",        title="Screener",         icon="◇"),
-        st.Page("pages/05_Financials.py",      title="Financials",       icon="◈"),
-        st.Page("pages/11_ETF_Analysis.py",    title="ETF Analysis",     icon="◉"),
-        st.Page("pages/16_Market_Brief.py",    title="Market Intel",     icon="◎"),
-        st.Page("pages/07_Sectors.py",         title="Sectors",          icon="⬡"),
-        st.Page("pages/13_Calendar.py",        title="Calendar",         icon="◫"),
-    ],
-    "AI Studio": [
-        st.Page("pages/19_AI_Chat.py",         title="AI Chat",          icon="◈"),
-        st.Page("pages/08_Memos.py",           title="Memos",            icon="◇"),
-        st.Page("pages/10_Recommendations.py", title="AI Picks",         icon="◆"),
-        st.Page("pages/17_Transcript.py",      title="Transcript",       icon="◎"),
-    ],
-    "Tools": [
-        st.Page("pages/09_History.py",         title="History",          icon="◫"),
-        st.Page("pages/12_Chart_Builder.py",   title="Charts",           icon="◉"),
-        st.Page("pages/15_Backtester.py",      title="Backtester",       icon="◇"),
-        st.Page("pages/20_Settings.py",        title="Settings",         icon="⬡"),
-    ],
-}
+pages = [
+    st.Page("pages/01_Main.py",           title="Home",           icon="🏠", default=True),
+    st.Page("pages/hub_portfolio.py",     title="My Portfolio",   icon="💼"),
+    st.Page("pages/hub_discover.py",      title="Discover",       icon="🔭"),
+    st.Page("pages/hub_intelligence.py",  title="Intelligence",   icon="📡"),
+    st.Page("pages/hub_ai.py",            title="AI Workspace",   icon="🤖"),
+    st.Page("pages/20_Settings.py",       title="Settings",       icon="⚙️"),
+]
 
 pg = st.navigation(pages)
 
 if st.session_state.pop("_go_analysis", False):
-    st.switch_page("pages/04_Analysis.py")
+    st.switch_page("pages/hub_ai.py")
 
 pg.run()

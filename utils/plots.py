@@ -6,10 +6,18 @@ from utils.config import COLOR_PRIMARY, COLOR_SUCCESS, COLOR_DANGER, COLOR_WARNI
 
 _DARK = dict(
     template="plotly_dark",
-    paper_bgcolor="#0a0a0a",
-    plot_bgcolor="#111111",
-    font=dict(color="white", family="sans-serif"),
-    margin=dict(l=50, r=30, t=50, b=40),
+    paper_bgcolor="#09090B",   # matches --bg-base
+    plot_bgcolor="#09090B",
+    font=dict(color="#A1A1AA", family="'Inter', -apple-system, sans-serif", size=11),
+    margin=dict(l=48, r=24, t=44, b=36),
+    xaxis=dict(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.06)",
+               tickfont=dict(family="'JetBrains Mono', monospace", size=10, color="#52525B")),
+    yaxis=dict(gridcolor="rgba(255,255,255,0.04)", zerolinecolor="rgba(255,255,255,0.06)",
+               tickfont=dict(family="'JetBrains Mono', monospace", size=10, color="#52525B")),
+    hoverlabel=dict(bgcolor="#1F1F24", bordercolor="rgba(255,255,255,0.08)",
+                    font=dict(family="'Inter', sans-serif", size=12, color="#FAFAFA")),
+    legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="rgba(255,255,255,0.04)",
+                font=dict(size=11, color="#A1A1AA")),
 )
 
 
@@ -17,9 +25,12 @@ def price_chart(hist: pd.DataFrame, ticker: str) -> go.Figure:
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                         row_heights=[0.72, 0.28], vertical_spacing=0.03)
     c = hist["Close"]
+    # Gradient area fill under price line
     fig.add_trace(go.Scatter(x=hist.index, y=c, mode="lines", name="Price",
-        line=dict(color=COLOR_PRIMARY, width=2)), row=1, col=1)
-    for w, col in [(20, COLOR_SUCCESS), (50, COLOR_DANGER), (200, "#9467bd")]:
+        line=dict(color="#6172F3", width=2),
+        fill="tozeroy",
+        fillcolor="rgba(97,114,243,0.05)"), row=1, col=1)
+    for w, col in [(20, "#22C55E"), (50, "#F59E0B"), (200, "#8B5CF6")]:
         if len(c) >= w:
             fig.add_trace(go.Scatter(x=hist.index, y=c.rolling(w).mean(), mode="lines",
                 name=f"MA{w}", line=dict(color=col, width=1.5, dash="dot")), row=1, col=1)
