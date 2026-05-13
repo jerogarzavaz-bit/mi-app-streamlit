@@ -1,14 +1,32 @@
 import streamlit as st
-from utils.config import GLOBAL_CSS
+from pathlib import Path
+from utils.config import GLOBAL_CSS, theme_js
 
+
+# ── Logo helpers ───────────────────────────────────────────────────────────────
+def _logo_path(variant: str, theme: str | None = None) -> Path | None:
+    """Return Path to logo file if it exists, else None.
+    variant: 'mascot' | 'icon'
+    theme:   'dark' | 'light' | None → uses session theme
+    """
+    if theme is None:
+        theme = st.session_state.get("theme", "dark")
+    p = Path(f"assets/{variant}_{theme}.png")
+    return p if p.exists() else None
+
+_icon_path = _logo_path("icon", "dark")  # always dark for browser tab icon
 st.set_page_config(
     page_title="The Bull Monkey",
-    page_icon="🐵",
+    page_icon=str(_icon_path) if _icon_path else "🐵",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+# Inject theme attribute on <body> so CSS token overrides apply
+_theme = st.session_state.get("theme", "dark")
+st.markdown(theme_js(_theme), unsafe_allow_html=True)
 
 # ── Login page extra styles ────────────────────────────────────────────────────
 st.markdown("""
@@ -66,6 +84,7 @@ def _init_defaults():
         "periodo_label":  "1 año",
         "data_provider":  "yfinance",
         "analyze_ticker": "",
+        "theme":          "dark",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -89,39 +108,49 @@ Y_LOGO_SVG = """<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmln
 
 # ── Login page ─────────────────────────────────────────────────────────────────
 def _show_login(authenticator):
+    theme = st.session_state.get("theme", "dark")
+
+    # ── Top hero ───────────────────────────────────────────────────────────────
+    st.markdown("<div class='login-wrap'>", unsafe_allow_html=True)
+    st.markdown("<div style='height:56px;'></div>", unsafe_allow_html=True)
+
+    mascot = _logo_path("mascot", theme)
+    if mascot:
+        # Real mascot image
+        _, hero_col, _ = st.columns([1, 1.1, 1])
+        with hero_col:
+            st.image(str(mascot), width=220)
+    else:
+        # Fallback animated emoji
+        st.markdown("""
+        <div style='text-align:center;'>
+          <div style='display:inline-flex;align-items:center;justify-content:center;
+                      width:80px;height:80px;
+                      background:linear-gradient(145deg,#18181B 0%,#1F1F24 100%);
+                      border:1px solid rgba(97,114,243,0.2);
+                      border-radius:22px;
+                      box-shadow:0 0 0 1px rgba(255,255,255,0.04),
+                                 0 8px 32px rgba(0,0,0,0.5),
+                                 0 0 40px rgba(97,114,243,0.1);
+                      margin:0 auto 0;
+                      font-size:40px;line-height:1;
+                      animation:breathe 5s ease-in-out infinite;'>🐵</div>
+        </div>""", unsafe_allow_html=True)
+
     st.markdown("""
-    <div class='login-wrap'>
-    <div style='text-align:center;padding:64px 0 40px;'>
-
-      <!-- Logo — restrained, premium -->
-      <div style='display:inline-flex;align-items:center;justify-content:center;
-                  width:64px;height:64px;
-                  background:linear-gradient(145deg,#18181B 0%,#1F1F24 100%);
-                  border:1px solid rgba(97,114,243,0.2);
-                  border-radius:18px;
-                  box-shadow:0 0 0 1px rgba(255,255,255,0.04),
-                             0 8px 32px rgba(0,0,0,0.5),
-                             0 0 40px rgba(97,114,243,0.1);
-                  margin:0 auto 24px;
-                  font-size:32px;line-height:1;
-                  animation:breathe 5s ease-in-out infinite;'>🐵</div>
-
-      <!-- Wordmark — editorial -->
+    <div style='text-align:center;padding:20px 0 32px;'>
       <div style='font-family:"Syne","Inter",sans-serif;font-size:26px;font-weight:800;
                   color:#FAFAFA;letter-spacing:-1px;line-height:1.1;margin-bottom:6px;'>
         The Bull Monkey
       </div>
-
-      <!-- Tagline — subtle -->
       <div style='font-size:10.5px;color:#3F3F46;letter-spacing:2px;font-weight:500;
-                  text-transform:uppercase;font-family:"Inter",sans-serif;margin-bottom:0;'>
+                  text-transform:uppercase;font-family:"Inter",sans-serif;'>
         AI Financial Intelligence
       </div>
-
-    </div>
     </div>
     """, unsafe_allow_html=True)
 
+    # ── Login form ─────────────────────────────────────────────────────────────
     col1, col2, col3 = st.columns([1, 1.35, 1])
     with col2:
         authenticator.login(fields={
@@ -140,6 +169,7 @@ def _show_login(authenticator):
       The Bull Monkey &nbsp;·&nbsp; Powered by Claude AI &nbsp;·&nbsp; © 2025
     </div>
     """, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ── Load user data after login ─────────────────────────────────────────────────
@@ -240,22 +270,34 @@ _check_morning_brief(username)
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    # Branding
-    st.markdown(f"""
-    <div class='y-sidebar-header'>
-      <div style='width:28px;height:28px;flex-shrink:0;
-                  background:linear-gradient(145deg,#1F1F24,#27272A);
-                  border:1px solid rgba(97,114,243,0.2);
-                  border-radius:8px;
-                  display:flex;align-items:center;justify-content:center;
-                  font-size:15px;line-height:1;'>🐵</div>
-      <div>
-        <div class='y-wordmark'>The Bull Monkey</div>
-        <div class='y-tagline'>AI Financial Intelligence</div>
-      </div>
-    </div>
+    # Branding — icon logo or emoji fallback
+    _sb_icon = _logo_path("icon")
+    if _sb_icon:
+        _ic, _tx = st.columns([1, 3.5])
+        with _ic:
+            st.image(str(_sb_icon), width=32)
+        with _tx:
+            st.markdown(f"""
+            <div style='padding-top:4px;'>
+              <div class='y-wordmark'>The Bull Monkey</div>
+              <div class='y-tagline'>AI Financial Intelligence</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class='y-sidebar-header'>
+          <div style='width:28px;height:28px;flex-shrink:0;
+                      background:linear-gradient(145deg,#1F1F24,#27272A);
+                      border:1px solid rgba(97,114,243,0.2);
+                      border-radius:8px;
+                      display:flex;align-items:center;justify-content:center;
+                      font-size:15px;line-height:1;'>🐵</div>
+          <div>
+            <div class='y-wordmark'>The Bull Monkey</div>
+            <div class='y-tagline'>AI Financial Intelligence</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
 
-    <!-- User badge -->
+    st.markdown(f"""
     <div class='y-user-badge'>
       <div style='font-size:9px;font-weight:500;color:var(--text-disabled);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:3px;font-family:"Inter",sans-serif;'>Signed in as</div>
       <div style='font-size:12.5px;font-weight:500;color:var(--text-secondary);font-family:"Inter",sans-serif;letter-spacing:-0.1px;'>{display_name}</div>
@@ -287,6 +329,13 @@ with st.sidebar:
                     st.error("Save failed")
     with c2:
         authenticator.logout("Sign out", location="sidebar")
+
+    # Theme toggle
+    _current_theme = st.session_state.get("theme", "dark")
+    _theme_label   = "☀️  Light" if _current_theme == "dark" else "🌙  Dark"
+    if st.button(_theme_label, use_container_width=True, key="sb_theme_toggle"):
+        st.session_state.theme = "light" if _current_theme == "dark" else "dark"
+        st.rerun()
 
     st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
 

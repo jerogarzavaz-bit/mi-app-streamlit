@@ -830,5 +830,56 @@ header[data-testid="stHeader"] { background: transparent !important; height: 0 !
     border: 1px dashed var(--border-default) !important;
     border-radius: var(--radius-lg) !important;
 }
+
+/* ── Light Mode Token Overrides ────────────────────────────────────────────── */
+/* Applied via data-theme="light" on <body> — toggled by Streamlit JS injector */
+[data-theme="light"] {
+    --bg-base:        #F8F8FA;
+    --bg-surface:     #F2F2F5;
+    --bg-elevated:    #FFFFFF;
+    --bg-overlay:     #EEEEF2;
+    --bg-hover:       #E4E4E9;
+    --bg-glass:       rgba(248,248,250,0.80);
+
+    --border-subtle:  rgba(0,0,0,0.055);
+    --border-default: rgba(0,0,0,0.10);
+    --border-strong:  rgba(0,0,0,0.16);
+
+    --text-primary:   #111114;
+    --text-secondary: #3F3F46;
+    --text-muted:     #71717A;
+    --text-disabled:  #A1A1AA;
+
+    --shadow-xs:  0 1px 2px rgba(0,0,0,0.08);
+    --shadow-sm:  0 2px 8px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-md:  0 4px 20px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-lg:  0 12px 48px rgba(0,0,0,0.14), 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-glow: 0 0 24px rgba(97,114,243,0.12), 0 4px 20px rgba(0,0,0,0.08);
+}
+[data-theme="light"] .stApp {
+    background: var(--bg-base);
+    background-image:
+        radial-gradient(ellipse 80% 50% at 15% -10%, rgba(97,114,243,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 85% 110%, rgba(139,92,246,0.03) 0%, transparent 55%);
+}
+[data-theme="light"] section[data-testid="stSidebar"] {
+    background: rgba(248,248,250,0.88) !important;
+}
 </style>
 """
+
+
+# ── Theme injection helper ─────────────────────────────────────────────────────
+def theme_js(theme: str) -> str:
+    """Return a <script> snippet that sets data-theme on <body>."""
+    return f"""<script>
+(function() {{
+    var t = "{theme}";
+    document.body.setAttribute("data-theme", t);
+    var mo = new MutationObserver(function() {{
+        if (document.body.getAttribute("data-theme") !== t)
+            document.body.setAttribute("data-theme", t);
+    }});
+    mo.observe(document.body, {{attributes: true, attributeFilter: ["data-theme"]}});
+}})();
+</script>"""
