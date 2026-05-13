@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from utils.data import get_stock_data
+from utils.data import get_stock_data, get_current_price
 from utils.db import save_user_data, is_configured
 
 def _autosave():
@@ -85,12 +85,31 @@ else:
     for i, a in enumerate(alerts):
         if a.get("triggered"):
             continue
-        c1, c2, c3, c4, c5 = st.columns([1, 2, 2, 3, 1])
+        curr_price = get_current_price(a["ticker"]) or 0
+        threshold  = a["threshold"]
+        if curr_price and threshold:
+            dist_pct = ((curr_price - threshold) / threshold * 100)
+            if a["condition"] == "Price >":
+                proximity = threshold - curr_price
+                pct_away  = (proximity / threshold * 100) if threshold else 0
+                prox_str  = f"${curr_price:.2f} — {abs(pct_away):.1f}% {'above ✅' if curr_price >= threshold else 'below target'}"
+                prox_col  = "#22c55e" if curr_price >= threshold else ("#f59e0b" if abs(pct_away) < 5 else "#8aadcc")
+            else:
+                proximity = curr_price - threshold
+                pct_away  = (proximity / threshold * 100) if threshold else 0
+                prox_str  = f"${curr_price:.2f} — {abs(pct_away):.1f}% {'below ✅' if curr_price <= threshold else 'above target'}"
+                prox_col  = "#22c55e" if curr_price <= threshold else ("#f59e0b" if abs(pct_away) < 5 else "#8aadcc")
+        else:
+            prox_str = "—"
+            prox_col = "#4a6a8a"
+
+        c1, c2, c3, c4, c5, c6 = st.columns([1, 1, 1, 2, 2, 1])
         c1.write(f"**{a['ticker']}**")
         c2.write(a["condition"])
-        c3.write(f"${a['threshold']:.2f}")
-        c4.write(a.get("note", ""))
-        if c5.button("🗑️", key=f"del_alert_{i}"):
+        c3.write(f"${threshold:.2f}")
+        c4.markdown(f"<span style='color:{prox_col};font-size:12px;font-weight:600;'>{prox_str}</span>", unsafe_allow_html=True)
+        c5.write(a.get("note", ""))
+        if c6.button("🗑️", key=f"del_alert_{i}"):
             alerts.pop(i)
             st.session_state.alerts = alerts
             _autosave()

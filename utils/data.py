@@ -79,6 +79,95 @@ def get_financial_statements(ticker: str):
 
 
 @st.cache_data(ttl=CACHE_TTL)
+def get_market_sparklines() -> dict:
+    """30-day close series for each market index (for sparkline charts)."""
+    result = {}
+    for name, symbol in MARKET_INDICES.items():
+        try:
+            hist = yf.Ticker(symbol).history(period="30d")
+            result[name] = hist["Close"].dropna().tolist() if len(hist) else []
+        except Exception:
+            result[name] = []
+    return result
+
+
+@st.cache_data(ttl=600)
+def get_ticker_news(ticker: str) -> list:
+    """Return up to 8 recent news items for a ticker."""
+    try:
+        items = yf.Ticker(ticker).news or []
+        out = []
+        for n in items[:8]:
+            content = n.get("content") or {}
+            title   = content.get("title") or n.get("title", "")
+            summary = content.get("summary") or ""
+            pub     = content.get("provider", {}).get("displayName", "") or n.get("publisher", "")
+            url     = content.get("canonicalUrl", {}).get("url", "") or n.get("link", "")
+            ts      = content.get("pubDate") or ""
+            if title:
+                out.append({"title": title, "summary": summary,
+                            "publisher": pub, "url": url, "date": str(ts)[:10]})
+        return out
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def get_analyst_targets(ticker: str) -> dict:
+    """Return analyst price targets and recommendation consensus."""
+    try:
+        info = yf.Ticker(ticker).info
+        return {
+            "low":        info.get("targetLowPrice"),
+            "mean":       info.get("targetMeanPrice"),
+            "high":       info.get("targetHighPrice"),
+            "current":    info.get("currentPrice") or info.get("regularMarketPrice"),
+            "rec":        info.get("recommendationKey", ""),
+            "num":        info.get("numberOfAnalystOpinions", 0),
+            "rec_mean":   info.get("recommendationMean"),
+        }
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=1800)
+def get_portfolio_history(holdings_json: str) -> pd.DataFrame:
+    """
+    Build a daily portfolio value series from purchase dates to today.
+    holdings_json: JSON string of list[{ticker, quantity, purchase_date}]
+    Returns DataFrame with columns: date, value
+    """
+    import json
+    from datetime import date as dt_date
+    holdings = json.loads(holdings_json)
+    if not holdings:
+        return pd.DataFrame()
+    try:
+        start = min(h.get("purchase_date", str(dt_date.today()))[:10] for h in holdings)
+        tickers = list({h["ticker"] for h in holdings})
+        raw = yf.download(tickers, start=start, auto_adjust=True, progress=False)
+        if raw.empty:
+            return pd.DataFrame()
+        closes = raw["Close"] if len(tickers) > 1 else raw[["Close"]].rename(columns={"Close": tickers[0]})
+        closes = closes.ffill().dropna(how="all")
+        portfolio_vals = pd.Series(0.0, index=closes.index)
+        for h in holdings:
+            t   = h["ticker"]
+            qty = float(h.get("quantity", 0))
+            pdate = pd.to_datetime(h.get("purchase_date", start))
+            if t not in closes.columns:
+                continue
+            series = closes[t].copy()
+            series.loc[series.index < pdate] = 0
+            portfolio_vals += series * qty
+        df = portfolio_vals[portfolio_vals > 0].reset_index()
+        df.columns = ["date", "value"]
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=CACHE_TTL)
 def get_sector_performance(period: str = "1mo"):
     results = {}
     for sector, symbol in SECTOR_ETFS.items():

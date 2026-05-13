@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from utils.data import get_stock_data, get_current_price
-from utils.plots import portfolio_pie
+import json
+from utils.data import get_stock_data, get_current_price, get_portfolio_history
+from utils.plots import portfolio_pie, portfolio_history_chart
 from utils.db import save_user_data, is_configured
 
 def _autosave():
@@ -107,7 +108,7 @@ def _parse_yf_csv(file) -> list[dict]:
         return []
 
 
-tab_ov, tab_edit, tab_rb, tab_risk = st.tabs(["Overview", "Edit Holdings", "Rebalance", "Risk Analytics"])
+tab_ov, tab_perf, tab_edit, tab_rb, tab_risk = st.tabs(["Overview", "Performance", "Edit Holdings", "Rebalance", "Risk Analytics"])
 
 # ── Edit Holdings ──────────────────────────────────────────────────────────────
 with tab_edit:
@@ -326,6 +327,36 @@ with tab_ov:
                     "Weight %":       st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.1f%%"),
                 })
             st.caption("🟢 Live price  ·  🔴 Could not fetch — showing purchase price (gain = $0)")
+
+# ── Performance Chart ──────────────────────────────────────────────────────────
+with tab_perf:
+    if not portfolio:
+        st.info("Add holdings first.")
+    else:
+        st.markdown("<div style='color:#8aadcc;font-size:13px;margin-bottom:16px;'>Historical portfolio value from your earliest purchase date to today, reconstructed from daily closing prices.</div>", unsafe_allow_html=True)
+        with st.spinner("Building performance history…"):
+            holdings_for_hist = [
+                {"ticker": h["ticker"], "quantity": h.get("quantity", 0),
+                 "purchase_date": h.get("purchase_date", "")}
+                for h in portfolio if h.get("purchase_date")
+            ]
+            hist_df = get_portfolio_history(json.dumps(holdings_for_hist))
+
+        if hist_df.empty:
+            st.warning("Could not build performance history. Check that your tickers are valid and purchase dates are set.")
+        else:
+            start_val = hist_df["value"].iloc[0]
+            end_val   = hist_df["value"].iloc[-1]
+            gain      = end_val - start_val
+            gain_pct  = (gain / start_val * 100) if start_val else 0
+            ath       = hist_df["value"].max()
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Starting Value",  f"${start_val:,.2f}")
+            m2.metric("Current Value",   f"${end_val:,.2f}", f"{gain_pct:+.2f}%")
+            m3.metric("All-Time High",   f"${ath:,.2f}")
+
+            st.plotly_chart(portfolio_history_chart(hist_df), use_container_width=True)
 
 # ── Rebalance ──────────────────────────────────────────────────────────────────
 with tab_rb:

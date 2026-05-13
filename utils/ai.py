@@ -90,7 +90,7 @@ def chat(messages: list, platform_ctx: str = "") -> str:
     client = _client()
     if not client:
         return None
-    system = f"""You are an expert financial analyst embedded in Stock Analyzer Pro.
+    system = f"""You are an expert financial analyst embedded in The Bull Monkey.
 Be concise, data-driven, and actionable. Use markdown. No disclaimers.
 
 {platform_ctx}"""
@@ -183,6 +183,84 @@ Be selective and specific. Quality over quantity."""
         return r.content[0].text
     except Exception as e:
         return f"⚠️ Error: {e}"
+
+
+def morning_brief_ai(
+    market_data: dict,
+    portfolio_tickers: list,
+    portfolio_news: list,
+    insider_txns: list,
+    earnings: list,
+    macro_events: list,
+    extended: bool = False,
+) -> str:
+    client = _client()
+    if not client:
+        return ""
+
+    mkt_lines = "\n".join(
+        f"  {k}: {v['price']:.2f} ({v['change_pct']:+.2f}%)"
+        for k, v in market_data.items()
+    )
+    port_str = ", ".join(portfolio_tickers[:15]) if portfolio_tickers else "None configured"
+    news_lines = "\n".join(
+        f"  [{n.get('ticker','MKT')}] {n.get('title','')} ({n.get('source','')})"
+        for n in (portfolio_news or [])[:8]
+    )
+    insider_lines = "\n".join(
+        f"  {t.get('ticker','')} — {t.get('filer','')} filed Form {t.get('form','4')} on {t.get('date','')}"
+        for t in (insider_txns or [])[:5]
+    ) or "  None"
+    earnings_lines = "\n".join(
+        f"  {e.get('ticker','')} reports on {e.get('date','')}"
+        for e in (earnings or [])[:5]
+    ) or "  None upcoming"
+    macro_lines = "\n".join(
+        f"  {ev.get('date','')} — {ev.get('name','')}"
+        for ev in (macro_events or [])[:5]
+    ) or "  No events found"
+
+    prompt = f"""You are a senior institutional portfolio strategist writing a premium daily morning brief.
+
+TODAY'S DATE: {__import__('datetime').date.today().strftime('%A, %B %d, %Y')}
+
+LIVE MARKET DATA:
+{mkt_lines}
+
+CLIENT PORTFOLIO: {port_str}
+
+PORTFOLIO NEWS:
+{news_lines}
+
+INSIDER TRANSACTIONS (SEC Form 4):
+{insider_lines}
+
+UPCOMING EARNINGS:
+{earnings_lines}
+
+MACRO CALENDAR:
+{macro_lines}
+
+Write a premium morning brief covering:
+1. **Market Tone** — What is the dominant narrative today? Risk-on or risk-off? Why?
+2. **Key Moves** — Most significant index/sector moves and their implications.
+3. **Portfolio Spotlight** — 2-3 most actionable insights from the portfolio news & insiders.
+4. **Earnings Watch** — What to expect from upcoming reports.
+5. **Macro Focus** — Key economic events/data that matter this week.
+6. **Trade Ideas** — 2 specific setups worth watching today with rationale.
+7. **Risk Radar** — Top 2 tail risks to monitor.
+
+Tone: Institutional, precise, zero fluff. Use bullet points. Total length: ~400 words."""
+
+    try:
+        kwargs = dict(model="claude-sonnet-4-6", max_tokens=1800,
+                      messages=[{"role": "user", "content": prompt}])
+        if extended:
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": 6000}
+        r = client.messages.create(**kwargs)
+        return r.content[-1].text if extended else r.content[0].text
+    except Exception as e:
+        return f"⚠️ Error generating brief: {e}"
 
 
 def generate_memo(analysis_text: str, ticker: str, info: dict) -> str:

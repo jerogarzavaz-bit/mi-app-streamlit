@@ -118,6 +118,19 @@ st.info(f"**{st.session_state.get('data_provider','yfinance')}** is active as th
 
 st.divider()
 
+# ── Morning Brief ─────────────────────────────────────────────────────────────
+st.subheader("☀️ Morning Brief")
+st.write("Configure your personalized AI market briefing delivered by email before the open.")
+from utils.morning_brief import is_email_configured
+if is_email_configured():
+    cfg_e = st.session_state.get("api_keys", {})
+    st.success(f"✅ Email configured → {cfg_e.get('brief_email','')}  ·  Send time: {cfg_e.get('brief_send_time','07:00')}  ·  Auto-send: {'ON' if cfg_e.get('brief_enabled') else 'OFF'}")
+else:
+    st.warning("Morning Brief email not configured. Go to **Morning Brief → Schedule & Email** to set it up.")
+if st.button("⚙️ Go to Morning Brief Settings"):
+    st.switch_page("pages/21_Morning_Brief.py")
+st.divider()
+
 # ── Features Roadmap ───────────────────────────────────────────────────────────
 st.subheader("🚀 Features Roadmap")
 from utils.ai import has_key

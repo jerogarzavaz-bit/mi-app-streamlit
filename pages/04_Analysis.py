@@ -5,6 +5,7 @@ from utils.screener import score_stock
 from utils.ai import has_key, no_key_banner, analyze_stock
 from utils.config import COLOR_SUCCESS, COLOR_DANGER, COLOR_WARNING
 from utils.db import save_user_data, is_configured
+from utils.data import get_ticker_news, get_analyst_targets
 from datetime import date
 
 def _autosave():
@@ -121,6 +122,39 @@ if summary:
         st.write(summary)
 
 st.divider()
+
+# ── Analyst Targets ───────────────────────────────────────────────────────────
+targets = get_analyst_targets(ticker)
+if targets.get("mean"):
+    st.markdown("<div style='font-size:11px;font-weight:700;color:#4a6a8a;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;'>Analyst Consensus</div>", unsafe_allow_html=True)
+    curr = targets.get("current") or price
+    mean = targets["mean"]
+    upside = ((mean - curr) / curr * 100) if curr else 0
+    ucolor = "#22c55e" if upside >= 0 else "#ef4444"
+    tc1, tc2, tc3, tc4, tc5 = st.columns(5)
+    tc1.metric("Analyst Low",    f"${targets.get('low',0):.2f}")
+    tc2.metric("Consensus",      f"${mean:.2f}", f"{upside:+.1f}% upside", delta_color="normal")
+    tc3.metric("Analyst High",   f"${targets.get('high',0):.2f}")
+    rec_label = (targets.get("rec") or "").replace("_"," ").upper()
+    tc4.metric("Recommendation", rec_label or "N/A")
+    tc5.metric("# Analysts",     targets.get("num", 0))
+    st.divider()
+
+# ── News ──────────────────────────────────────────────────────────────────────
+news = get_ticker_news(ticker)
+if news:
+    st.markdown("<div style='font-size:11px;font-weight:700;color:#4a6a8a;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;'>Latest News</div>", unsafe_allow_html=True)
+    for n in news[:5]:
+        url   = n.get("url", "#")
+        title = n.get("title", "")
+        pub   = n.get("publisher", "")
+        d     = n.get("date", "")[:10]
+        st.markdown(f"""
+        <div class='card' style='padding:12px 16px;margin-bottom:8px;'>
+          <a href='{url}' target='_blank' style='color:#7eb8e8;font-weight:600;font-size:13px;text-decoration:none;'>{title}</a>
+          <div style='color:#4a6a8a;font-size:11px;margin-top:4px;'>{pub} &nbsp;·&nbsp; {d}</div>
+        </div>""", unsafe_allow_html=True)
+    st.divider()
 
 # ── AI Analysis ────────────────────────────────────────────────────────────────
 st.subheader("🤖 AI Analysis")

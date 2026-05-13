@@ -159,3 +159,56 @@ def backtest_chart(dates, portfolio_vals: list, benchmark_vals: list, ticker: st
     fig.update_layout(**_DARK, title=f"Strategy vs Buy & Hold — {ticker}",
         yaxis_title="Portfolio Value ($)", hovermode="x unified", height=420)
     return fig
+
+
+def sparkline(series: list, color: str = COLOR_PRIMARY, height: int = 55) -> go.Figure:
+    """Tiny inline line chart with no axes."""
+    if not series or len(series) < 2:
+        return go.Figure()
+    y = series
+    up = y[-1] >= y[0]
+    c  = COLOR_SUCCESS if up else COLOR_DANGER
+    rgb = (34, 197, 94) if up else (239, 68, 68)
+    fig = go.Figure(go.Scatter(
+        x=list(range(len(y))), y=y, mode="lines",
+        line=dict(color=c, width=2),
+        fill="tozeroy",
+        fillcolor=f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.08)",
+    ))
+    fig.update_layout(
+        height=height, margin=dict(l=0, r=0, t=0, b=0),
+        xaxis=dict(visible=False, fixedrange=True),
+        yaxis=dict(visible=False, fixedrange=True),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    return fig
+
+
+def portfolio_history_chart(df: pd.DataFrame) -> go.Figure:
+    """Line chart of portfolio value over time."""
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["value"],
+        mode="lines", name="Portfolio Value",
+        line=dict(color=COLOR_PRIMARY, width=2.5),
+        fill="tozeroy",
+        fillcolor="rgba(31,119,180,0.08)",
+        hovertemplate="<b>%{x|%b %d, %Y}</b><br>$%{y:,.2f}<extra></extra>",
+    ))
+    # Mark all-time high
+    if len(df) > 1:
+        ath_idx = df["value"].idxmax()
+        fig.add_trace(go.Scatter(
+            x=[df.loc[ath_idx, "date"]], y=[df.loc[ath_idx, "value"]],
+            mode="markers", name="All-Time High",
+            marker=dict(color=COLOR_SUCCESS, size=10, symbol="star"),
+            hovertemplate="<b>ATH</b><br>$%{y:,.2f}<extra></extra>",
+        ))
+    fig.update_layout(
+        **_DARK, title="Portfolio Value Over Time",
+        yaxis_title="Total Value ($)",
+        hovermode="x unified", height=380,
+    )
+    return fig

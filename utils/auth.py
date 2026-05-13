@@ -44,7 +44,7 @@ def get_authenticator() -> stauth.Authenticate:
     except Exception:
         c_name, c_key, c_expiry = "sap_cookie", "change_this_secret_key_123!", 30
 
-    return stauth.Authenticate(creds, c_name, c_key, cookie_expiry_days=c_expiry)
+    return stauth.Authenticate(creds, c_name, c_key, cookie_expiry_days=c_expiry, auto_hash=False)
 
 
 def is_admin() -> bool:
