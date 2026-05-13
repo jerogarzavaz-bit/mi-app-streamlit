@@ -44,17 +44,26 @@ def _get_credentials() -> dict:
         seed_auth_credentials(sec_creds)
         return sec_creds
 
-    # Last-resort demo account
-    return {
+    # Last-resort fallback — hardcoded hashes (safe: bcrypt can't be reversed)
+    # admin → Admin12345 | guest01-10 → Bull01Guest … Bull10Guest
+    fallback = {
         "usernames": {
-            "admin": {
-                "name": "Admin",
-                "email": "admin@thebullmonkey.com",
-                "password": hash_password("Admin12345"),
-                "role": "admin",
-            }
+            "admin":   {"name": "Admin",    "email": "admin@thebullmonkey.com",   "password": "$2b$12$btb10qFHBD2bRIyKhkZ4SuVB7H8Lpmaly.z6Ojk5icbsGYFhiWwyO", "role": "admin"},
+            "guest01": {"name": "Guest 01", "email": "guest01@thebullmonkey.com", "password": "$2b$12$ezybItuhJfYaWBLm4JBbmOSO2Pis142OwASHqy8Ba4OZI2xFRb1.u", "role": "guest"},
+            "guest02": {"name": "Guest 02", "email": "guest02@thebullmonkey.com", "password": "$2b$12$1Kj.eHijxmsZe6mDlHb4pOK0b4uqZiF3/xDa.p72YvdEE6qn4VlyO", "role": "guest"},
+            "guest03": {"name": "Guest 03", "email": "guest03@thebullmonkey.com", "password": "$2b$12$loPehOwKfINVpq.rhfQYFePHYz/vXDqpfgYiD0lptuhZgkdK/G0I6", "role": "guest"},
+            "guest04": {"name": "Guest 04", "email": "guest04@thebullmonkey.com", "password": "$2b$12$FAPU8NlTGIxf0CxIq4ZHwuEXl8S1uCVapHXmgxaVXEJm.0jnLfrG2", "role": "guest"},
+            "guest05": {"name": "Guest 05", "email": "guest05@thebullmonkey.com", "password": "$2b$12$UVU14yBp60BMz7uExg17GukF.S4EDRS.OhefBFneXpE9KVO7ACKzu",  "role": "guest"},
+            "guest06": {"name": "Guest 06", "email": "guest06@thebullmonkey.com", "password": "$2b$12$fJDkDOYpqinmOlGPFJ5d4u5lJYYjb5EF6CLlJRe1fpd9xxG0fq28G", "role": "guest"},
+            "guest07": {"name": "Guest 07", "email": "guest07@thebullmonkey.com", "password": "$2b$12$b8jAziWn11oAfJUlHlAsF.1TNLTjKMumKvUvNjUWgjXl.M8anhIhu",  "role": "guest"},
+            "guest08": {"name": "Guest 08", "email": "guest08@thebullmonkey.com", "password": "$2b$12$KWN4eLqJICvi/hoHtf/.LO3aKpmD1BprxJc5hRswdmm7afRPZM2Fm",  "role": "guest"},
+            "guest09": {"name": "Guest 09", "email": "guest09@thebullmonkey.com", "password": "$2b$12$V5mAgnxm7MfqwkXjOj5sReb5EEz8mqS0We6tKggh9UkRfiJ2zTJKu",  "role": "guest"},
+            "guest10": {"name": "Guest 10", "email": "guest10@thebullmonkey.com", "password": "$2b$12$qhxR./ZBUIKLDoywrqCQEu.72XSMe7R8AG9NB9fMjGVgoVun5ZylW",  "role": "guest"},
         }
     }
+    # Seed Firestore with fallback so next load uses Firestore
+    seed_auth_credentials(fallback)
+    return fallback
 
 
 def get_authenticator() -> stauth.Authenticate:
