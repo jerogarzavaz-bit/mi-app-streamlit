@@ -260,9 +260,17 @@ if auth_status is not True:
     _show_login(authenticator)
     st.stop()
 
-# ── Session setup ──────────────────────────────────────────────────────────────
+# ── Session setup + RLS session guard ─────────────────────────────────────────
 username     = st.session_state["username"]
 display_name = st.session_state.get("name", username)
+
+# RLS: detect user switch on same browser session and wipe previous user's data
+_prev_owner = st.session_state.get("_session_owner")
+if _prev_owner is not None and _prev_owner != username:
+    from utils.db import clear_user_session_data
+    clear_user_session_data()
+    _init_defaults()
+st.session_state["_session_owner"] = username
 
 _load_after_login(username)
 _check_alerts()
