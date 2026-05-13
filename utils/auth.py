@@ -47,14 +47,21 @@ def get_authenticator() -> stauth.Authenticate:
     return stauth.Authenticate(creds, c_name, c_key, cookie_expiry_days=c_expiry, auto_hash=False)
 
 
-def is_admin() -> bool:
+def get_role() -> str:
     username = st.session_state.get("username", "")
     try:
         creds = _get_credentials()
-        role = creds.get("usernames", {}).get(username, {}).get("role", "user")
-        return role == "admin"
+        return creds.get("usernames", {}).get(username, {}).get("role", "user")
     except Exception:
-        return False
+        return "user"
+
+
+def is_admin() -> bool:
+    return get_role() == "admin"
+
+
+def is_guest() -> bool:
+    return get_role() == "guest"
 
 
 def get_user_display_name() -> str:

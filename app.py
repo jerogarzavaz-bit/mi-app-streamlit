@@ -345,14 +345,17 @@ with st.sidebar:
 
 
 # ── Navigation ─────────────────────────────────────────────────────────────────
+from utils.auth import is_guest as _is_guest
+
 pages = [
     st.Page("pages/01_Main.py",           title="Home",           icon="🏠", default=True),
     st.Page("pages/hub_portfolio.py",     title="My Portfolio",   icon="💼"),
     st.Page("pages/hub_discover.py",      title="Discover",       icon="🔭"),
     st.Page("pages/hub_intelligence.py",  title="Intelligence",   icon="📡"),
     st.Page("pages/hub_ai.py",            title="AI Workspace",   icon="🤖"),
-    st.Page("pages/20_Settings.py",       title="Settings",       icon="⚙️"),
 ]
+if not _is_guest():
+    pages.append(st.Page("pages/20_Settings.py", title="Settings", icon="⚙️"))
 
 pg = st.navigation(pages)
 
