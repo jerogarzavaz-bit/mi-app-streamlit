@@ -25,10 +25,9 @@ def _secrets_credentials() -> dict | None:
 def _get_credentials() -> dict:
     """
     Credential priority:
-      1. Firestore app_config/credentials  (always in sync, works on all devices)
-      2. st.secrets["credentials"]         (local secrets.toml / Streamlit Cloud)
-      3. Hardcoded demo fallback            (so the app never crashes)
-    On first load with Firestore available, seeds Firestore from secrets if empty.
+      1. Firestore app_config/credentials  (source of truth — all devices in sync)
+      2. Hardcoded hashes                  (bootstrap fallback, seeds Firestore)
+    secrets.toml credentials are intentionally skipped to avoid stale hashes.
     """
     from utils.db import get_auth_credentials, seed_auth_credentials
 
@@ -36,13 +35,6 @@ def _get_credentials() -> dict:
     fs_creds = get_auth_credentials()
     if fs_creds and fs_creds.get("usernames"):
         return fs_creds
-
-    # Firestore empty or unavailable — try secrets
-    sec_creds = _secrets_credentials()
-    if sec_creds and sec_creds.get("usernames"):
-        # Seed Firestore so future logins use it (only writes if doc missing)
-        seed_auth_credentials(sec_creds)
-        return sec_creds
 
     # Last-resort fallback — hardcoded hashes (safe: bcrypt can't be reversed)
     # admin → Admin12345 | guest01-10 → Bull01Guest … Bull10Guest
