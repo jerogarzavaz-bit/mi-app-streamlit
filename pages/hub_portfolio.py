@@ -28,8 +28,9 @@ st.markdown("""
   <div class='page-subtitle'>Holdings · Watchlists · Alerts · Performance · Investor Profile</div>
 </div>""", unsafe_allow_html=True)
 
-tab_ov, tab_perf, tab_hold, tab_wl, tab_alerts, tab_profile = st.tabs([
-    "📊 Overview", "📈 Performance", "✏️ Holdings", "👁️ Watchlist", "🔔 Alerts", "👤 Profile"
+tab_ov, tab_perf, tab_opt, tab_div, tab_hold, tab_wl, tab_alerts, tab_profile = st.tabs([
+    "📊 Overview", "📈 Performance", "⚖️ Optimizer", "💰 Dividends",
+    "✏️ Holdings", "👁️ Watchlist", "🔔 Alerts", "👤 Profile"
 ])
 
 
@@ -183,9 +184,230 @@ with tab_perf:
             m3.metric("All-Time High",  f"${ath:,.2f}")
             st.plotly_chart(portfolio_history_chart(hist_df), use_container_width=True)
 
+            st.divider()
+            with st.expander("⚡ Stress Test & VaR"):
+                from utils.stress_test import run_stress_test, compute_var
+                import plotly.graph_objects as go
+                from utils.config import COLOR_SUCCESS, COLOR_DANGER
+
+                portfolio_w_vals = st.session_state.get("portfolio", [])
+                if not any(h.get("current_value") for h in portfolio_w_vals):
+                    st.info("Return to Overview tab first to load live prices.")
+                else:
+                    c_var, c_stress = st.columns(2)
+                    with c_var:
+                        st.markdown("**Value at Risk (Historical)**")
+                        for conf, days in [(0.95, 1), (0.99, 1), (0.95, 10)]:
+                            v = compute_var(portfolio_w_vals, conf, days)
+                            label = f"{int(conf*100)}% VaR {days}d"
+                            st.metric(label, f"${abs(v['var_usd']):,.0f}",
+                                      delta=f"{v['var_pct']:.2f}%", delta_color="inverse")
+
+                    with c_stress:
+                        st.markdown("**Run Scenario Analysis**")
+                        if st.button("▶ Run Stress Test", key="perf_stress_run"):
+                            with st.spinner("Simulating scenarios…"):
+                                st.session_state["_stress_results"] = run_stress_test(portfolio_w_vals)
+
+                    stress = st.session_state.get("_stress_results")
+                    if stress:
+                        rows_s = [{"Scenario": k,
+                                   "Impact %": v["portfolio_impact_pct"],
+                                   "Impact $": v["portfolio_impact_usd"]}
+                                  for k, v in stress.items()]
+                        df_s = pd.DataFrame(rows_s).sort_values("Impact %")
+                        colors = [COLOR_SUCCESS if r >= 0 else COLOR_DANGER for r in df_s["Impact %"]]
+                        fig_s = go.Figure(go.Bar(
+                            x=df_s["Impact %"], y=df_s["Scenario"], orientation="h",
+                            marker_color=colors,
+                            text=[f"${v:+,.0f}" for v in df_s["Impact $"]],
+                            textposition="outside"))
+                        fig_s.update_layout(
+                            template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                            title="Portfolio Stress Test", xaxis_title="Impact (%)",
+                            height=380, margin=dict(l=180, r=80, t=44, b=36),
+                            font=dict(color="#A1A1AA"))
+                        st.plotly_chart(fig_s, use_container_width=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — HOLDINGS
+# TAB 3 — OPTIMIZER
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_opt:
+    from utils.portfolio_optimizer import optimize_portfolio
+    import plotly.graph_objects as go
+
+    portfolio = st.session_state.get("portfolio", [])
+    tickers = list({h["ticker"] for h in portfolio})
+
+    st.markdown("<div style='color:#8aadcc;font-size:13px;margin-bottom:16px;'>Modern Portfolio Theory — find the allocation that maximizes risk-adjusted returns for your current holdings.</div>", unsafe_allow_html=True)
+
+    if len(tickers) < 2:
+        st.info("Add at least 2 holdings to run portfolio optimization.")
+    else:
+        period_opt = st.select_slider("Historical period", ["1y", "2y", "3y", "5y"], value="2y", key="opt_period")
+        rf_rate = st.number_input("Risk-free rate (%)", value=4.5, step=0.1, key="opt_rf") / 100
+
+        if st.button("🔢 Run Optimization", type="primary", key="opt_run"):
+            with st.spinner("Running Modern Portfolio Theory optimization…"):
+                result = optimize_portfolio(tickers, period_opt, rf_rate)
+
+            if not result:
+                st.error("Could not fetch enough historical data. Try a shorter period.")
+            else:
+                st.session_state["_opt_result"] = result
+
+        result = st.session_state.get("_opt_result")
+        if result:
+            ms = result["max_sharpe"]
+            mv = result["min_volatility"]
+            eq = result["equal_weight"]
+            available_tickers = result["tickers"]
+
+            c1, c2, c3 = st.columns(3)
+            for col, port, label, color in [
+                (c1, ms, "⭐ Max Sharpe",     "#6172F3"),
+                (c2, mv, "🛡️ Min Volatility", "#22C55E"),
+                (c3, eq, "⚖️ Equal Weight",   "#F59E0B"),
+            ]:
+                with col:
+                    st.markdown(f"<div class='card' style='border-top:3px solid {color};padding:16px;'>", unsafe_allow_html=True)
+                    st.markdown(f"**{label}**")
+                    st.metric("Expected Return", f"{port['return']:+.1f}%")
+                    st.metric("Volatility",       f"{port['volatility']:.1f}%")
+                    st.metric("Sharpe Ratio",     f"{port['sharpe']:.2f}")
+                    wdf = pd.DataFrame({"Ticker": list(port["weights"].keys()),
+                                        "Weight %": list(port["weights"].values())})
+                    st.dataframe(wdf, hide_index=True, use_container_width=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+            # Efficient frontier scatter
+            st.divider()
+            mc = result.get("monte_carlo", [])
+            if mc:
+                fig_ef = go.Figure()
+                fig_ef.add_trace(go.Scatter(
+                    x=[p["v"] for p in mc], y=[p["r"] for p in mc],
+                    mode="markers", marker=dict(
+                        color=[p["s"] for p in mc],
+                        colorscale="Viridis", size=3, opacity=0.5,
+                        colorbar=dict(title="Sharpe")),
+                    name="Portfolios"))
+                for port, label, color, sym in [
+                    (ms, "Max Sharpe", "#6172F3", "star"),
+                    (mv, "Min Vol",    "#22C55E", "diamond"),
+                    (eq, "Equal Wt",  "#F59E0B", "circle"),
+                ]:
+                    fig_ef.add_trace(go.Scatter(
+                        x=[port["volatility"]], y=[port["return"]],
+                        mode="markers+text", text=[label],
+                        textposition="top center",
+                        marker=dict(color=color, size=14, symbol=sym),
+                        name=label))
+                fig_ef.update_layout(
+                    template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                    title="Efficient Frontier — 5,000 Random Portfolios",
+                    xaxis_title="Annual Volatility (%)", yaxis_title="Annual Return (%)",
+                    height=420, font=dict(color="#A1A1AA"))
+                st.plotly_chart(fig_ef, use_container_width=True)
+
+            # Rebalancing table
+            st.subheader("📋 Suggested Rebalancing (vs Max Sharpe)")
+            total_val = sum(h.get("current_value", 0) for h in portfolio)
+            rebal_rows = []
+            for t in available_tickers:
+                curr_val = next((h.get("current_value", 0) for h in portfolio if h["ticker"] == t), 0)
+                curr_pct = curr_val / total_val * 100 if total_val else 0
+                opt_pct  = ms["weights"].get(t, 0)
+                diff     = opt_pct - curr_pct
+                rebal_rows.append({
+                    "Ticker": t,
+                    "Current %": round(curr_pct, 1),
+                    "Optimal %": opt_pct,
+                    "Difference": round(diff, 1),
+                    "Action": "↑ Increase" if diff > 2 else ("↓ Reduce" if diff < -2 else "✓ Hold"),
+                })
+            st.dataframe(pd.DataFrame(rebal_rows), hide_index=True, use_container_width=True,
+                column_config={"Difference": st.column_config.NumberColumn(format="%+.1f%%")})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — DIVIDENDS
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_div:
+    from utils.dividends import get_portfolio_annual_income, get_dividend_data, get_portfolio_dividend_calendar
+    import plotly.graph_objects as go
+    from utils.config import COLOR_PRIMARY, COLOR_SUCCESS
+
+    portfolio = st.session_state.get("portfolio", [])
+    if not portfolio:
+        st.info("Add holdings to see dividend analysis.")
+    else:
+        with st.spinner("Fetching dividend data…"):
+            income = get_portfolio_annual_income(portfolio)
+
+        total_val = sum(h.get("current_value", 0) for h in portfolio) or 1
+        port_yield = income["total_annual"] / total_val * 100
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Annual Income",   f"${income['total_annual']:,.2f}")
+        m2.metric("Monthly Average", f"${income['total_annual']/12:,.2f}")
+        m3.metric("Portfolio Yield", f"{port_yield:.2f}%")
+
+        # Monthly bar chart
+        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        monthly_vals = [income["monthly_breakdown"].get(i, 0) for i in range(1, 13)]
+        fig_div = go.Figure(go.Bar(
+            x=months, y=monthly_vals,
+            marker_color=COLOR_PRIMARY,
+            text=[f"${v:.0f}" for v in monthly_vals],
+            textposition="outside"))
+        fig_div.update_layout(
+            template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+            title="Projected Monthly Dividend Income", yaxis_title="Income ($)",
+            height=320, font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36))
+        st.plotly_chart(fig_div, use_container_width=True)
+
+        # Per-ticker table
+        rows = []
+        for h in portfolio:
+            t = h["ticker"]
+            d = get_dividend_data(t)
+            rows.append({
+                "Ticker": t,
+                "Annual/Share": f"${d['annual_dividend']:.4f}",
+                "Yield %": f"{d['yield_pct']:.2f}%",
+                "Frequency": d["frequency"],
+                "Payout Ratio": f"{d['payout_ratio']:.0f}%",
+                "5Y Growth": f"{d['growth_5yr']:+.1f}%",
+                "Next Ex-Date": d["ex_date"] or "—",
+                "Annual Income": f"${income['by_ticker'].get(t, 0):,.2f}",
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+
+        # Calendar
+        with st.expander("📅 Dividend Calendar — Next 12 Months"):
+            tickers_tuple = tuple(h["ticker"] for h in portfolio)
+            cal = get_portfolio_dividend_calendar(tickers_tuple)
+            if cal:
+                cal_rows = []
+                for e in cal:
+                    qty = next((h.get("quantity", 0) for h in portfolio if h["ticker"] == e["ticker"]), 0)
+                    cal_rows.append({
+                        "Ticker": e["ticker"],
+                        "Ex-Date": e["ex_date"],
+                        "Amount/Share": f"${e['amount']:.4f}",
+                        "Estimated Income": f"${e['amount']*qty:.2f}",
+                        "Frequency": e["frequency"],
+                    })
+                st.dataframe(pd.DataFrame(cal_rows), hide_index=True, use_container_width=True)
+            else:
+                st.info("No upcoming ex-dividend dates found for your holdings.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — HOLDINGS (tab_hold)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_hold:
     portfolio = st.session_state.get("portfolio", [])
@@ -356,7 +578,7 @@ with tab_hold:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — WATCHLIST
+# TAB 6 — WATCHLIST
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_wl:
     watchlists = st.session_state.get("watchlists", {})
@@ -494,7 +716,7 @@ with tab_wl:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — ALERTS
+# TAB 7 — ALERTS
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_alerts:
     alerts = st.session_state.get("alerts", [])
@@ -592,7 +814,7 @@ with tab_alerts:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 6 — PROFILE
+# TAB 8 — PROFILE
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_profile:
     if "profile_step" not in st.session_state:

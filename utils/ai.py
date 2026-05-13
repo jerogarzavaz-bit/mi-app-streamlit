@@ -263,6 +263,86 @@ Tone: Institutional, precise, zero fluff. Use bullet points. Total length: ~400 
         return f"⚠️ Error generating brief: {e}"
 
 
+def analyze_filing(text: str, ticker: str) -> str:
+    """Analyze SEC filing or annual report text with Claude."""
+    client = _client()
+    if not client:
+        return ""
+    truncated = text[:15000] if len(text) > 15000 else text
+    prompt = f"""You are a senior equity analyst. Analyze this SEC filing / annual report for {ticker}.
+
+FILING TEXT:
+{truncated}
+
+Provide a structured analysis with these exact sections:
+
+## Revenue & Growth Outlook
+(trend, YoY growth, forward guidance if mentioned)
+
+## Top 5 Risk Factors
+(numbered list, most material risks)
+
+## Management Tone
+(Bullish / Neutral / Bearish — quote key phrases that signal tone)
+
+## Red Flags
+(accounting concerns, dilution, debt covenants, legal issues — or "None identified")
+
+## Bull Case
+(2-3 sentences on upside scenario)
+
+## Bear Case
+(2-3 sentences on downside scenario)
+
+## Analyst Verdict
+(1 paragraph summary with conviction rating: High/Medium/Low)"""
+    try:
+        resp = client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=1800,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return resp.content[0].text
+    except Exception:
+        return ""
+
+
+def generate_trade_ideas(tickers: list, bias: str, horizon: str, context: str) -> str:
+    """Generate structured trade ideas for given tickers."""
+    client = _client()
+    if not client:
+        return ""
+    prompt = f"""You are a professional trader and portfolio manager. Generate actionable trade ideas.
+
+MARKET BIAS: {bias}
+TIME HORIZON: {horizon}
+TICKERS TO CONSIDER: {', '.join(tickers)}
+PORTFOLIO CONTEXT:
+{context}
+
+Generate 3-5 specific trade ideas. For each use this exact format:
+
+### [TICKER] — [LONG/SHORT] — [Conviction: High/Med/Low]
+**Thesis:** (2-3 sentences explaining the setup)
+**Entry Zone:** $XX.XX – $XX.XX
+**Price Target:** $XX.XX (+X%)
+**Stop Loss:** $XX.XX (-X%)
+**Risk/Reward:** X:1
+**Catalyst:** (what drives the move)
+**Time Frame:** (specific timeframe)
+
+---
+
+Focus on setups with clear risk/reward. Be specific with price levels."""
+    try:
+        resp = client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return resp.content[0].text
+    except Exception:
+        return ""
+
+
 def generate_memo(analysis_text: str, ticker: str, info: dict) -> str:
     client = _client()
     if not client:

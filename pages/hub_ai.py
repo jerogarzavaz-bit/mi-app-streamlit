@@ -9,8 +9,8 @@ st.markdown("""
   <div class='page-subtitle'>Chat · Deep Analysis · Financials · Memos · History · Backtester</div>
 </div>""", unsafe_allow_html=True)
 
-tab_chat, tab_analysis, tab_fin, tab_memos, tab_history, tab_bt = st.tabs([
-    "💬 AI Chat", "📊 Deep Analysis", "💰 Financials", "📝 Memos", "📚 History", "⚡ Backtester"
+tab_chat, tab_analysis, tab_fin, tab_memos, tab_ideas, tab_history, tab_bt = st.tabs([
+    "💬 AI Chat", "📊 Deep Analysis", "💰 Financials", "📝 Memos", "💡 Trade Ideas", "📚 History", "⚡ Backtester"
 ])
 
 
@@ -107,139 +107,182 @@ with tab_analysis:
     from utils.config import COLOR_SUCCESS, COLOR_DANGER, COLOR_WARNING
     from utils.db import save_user_data, is_configured
 
-    if not has_key():
-        st.info("💡 Go to **Settings** to add your Anthropic API key and unlock AI analysis.")
+    analysis_sub1, analysis_sub2 = st.tabs(["📊 Score Analysis", "📄 10-K / Filing Analyzer"])
 
-    col_in, col_btn = st.columns([3, 1])
-    default_ticker = st.session_state.get("analyze_ticker", "")
-    ticker_input = col_in.text_input("Ticker symbol", value=default_ticker,
-                                      placeholder="e.g. NVDA, AAPL, AMXL.MX", key="ai_analysis_ticker")
-    period = st.session_state.get("period", "1y")
-    analyze = col_btn.button("Analyze", type="primary", use_container_width=True, key="ai_analyze_btn")
-
-    if not ticker_input:
-        st.info("Enter a ticker symbol above to begin analysis.")
-    else:
-        ticker = ticker_input.strip().upper()
-        st.session_state.analyze_ticker = ticker
-
-        with st.spinner(f"Loading data for {ticker}…"):
-            info, hist = get_stock_data(ticker, period)
-
-        if info is None or hist is None or len(hist) == 0:
-            st.error(f"Could not retrieve data for **{ticker}**. Check the symbol and try again.")
+    with analysis_sub2:
+        from utils.ai import analyze_filing
+        if not has_key():
+            no_key_banner("10-K Analyzer")
         else:
-            price   = info.get("currentPrice") or info.get("regularMarketPrice") or hist["Close"].iloc[-1]
-            prev    = info.get("previousClose", price) or price
-            delta   = price - prev
-            delta_p = delta / prev * 100 if prev else 0
-            name    = info.get("longName", ticker)
-
-            st.markdown(f"## {ticker} — {name}")
-            c1, c2, c3, c4, c5, c6 = st.columns(6)
-            c1.metric("Price",      f"${price:.2f}", f"{delta_p:+.2f}%")
-            pe = info.get("trailingPE")
-            c2.metric("P/E (TTM)",  f"{pe:.1f}" if pe else "N/A")
-            mc = info.get("marketCap", 0)
-            c3.metric("Market Cap", f"${mc/1e9:.1f}B" if mc else "N/A")
-            c4.metric("52W High",   f"${info.get('fiftyTwoWeekHigh', 0):.2f}")
-            c5.metric("52W Low",    f"${info.get('fiftyTwoWeekLow',  0):.2f}")
-            div = (info.get("dividendYield") or 0) * 100
-            c6.metric("Div Yield",  f"{div:.2f}%")
-
-            scores = score_stock(info, hist)
-            sc_cols = st.columns(7)
-            tier_color = COLOR_SUCCESS if scores["tier"] == 1 else COLOR_WARNING if scores["tier"] == 2 else COLOR_DANGER
-            sc_cols[0].metric("Composite",  f"{scores['composite']}/10")
-            sc_cols[1].metric("Valuation",  scores["valuation"])
-            sc_cols[2].metric("Growth",     scores["growth"])
-            sc_cols[3].metric("Quality",    scores["quality"])
-            sc_cols[4].metric("Technical",  scores["technical"])
-            sc_cols[5].metric("Momentum",   scores["momentum"])
-            sc_cols[6].metric("Sentiment",  scores["sentiment"])
-            st.markdown(f"**Recommendation: <span style='color:{tier_color};font-size:20px;'>{scores['rec']}</span>**",
-                        unsafe_allow_html=True)
-
-            st.divider()
-            chart_type = st.radio("Chart type", ["Line + MAs", "Candlestick"], horizontal=True, key="ai_chart_type")
-            period_sel = st.select_slider("Period", options=["30d","100d","6mo","1y","2y","3y","5y"],
-                                          value=period, key="ai_period_sel")
-            if period_sel != period:
-                st.session_state.period = period_sel
-                st.rerun()
-
-            if chart_type == "Candlestick":
-                st.plotly_chart(candlestick_chart(hist, ticker), use_container_width=True)
+            st.markdown("Upload or paste a SEC annual report (10-K) or any earnings filing to get an AI-powered deep analysis.")
+            input_method = st.radio("Input method", ["Paste text", "Upload file"], horizontal=True, key="tenk_method")
+            filing_text = ""
+            if input_method == "Paste text":
+                filing_text = st.text_area("Paste filing text here", height=200, key="tenk_text",
+                                           placeholder="Paste 10-K text, earnings release, or any SEC filing…")
             else:
-                st.plotly_chart(price_chart(hist, ticker), use_container_width=True)
+                upl = st.file_uploader("Upload TXT or PDF", type=["txt", "pdf"], key="tenk_file")
+                if upl:
+                    if upl.name.endswith(".pdf"):
+                        try:
+                            import PyPDF2
+                            import io as _io
+                            reader = PyPDF2.PdfReader(_io.BytesIO(upl.read()))
+                            filing_text = "\n".join(p.extract_text() or "" for p in reader.pages[:30])
+                        except Exception:
+                            try:
+                                import pdfplumber
+                                import io as _io2
+                                with pdfplumber.open(_io2.BytesIO(upl.read())) as pdf:
+                                    filing_text = "\n".join(p.extract_text() or "" for p in pdf.pages[:30])
+                            except Exception:
+                                st.error("Could not parse PDF. Try pasting text instead.")
+                    else:
+                        filing_text = upl.read().decode("utf-8", errors="replace")
 
-            st.divider()
-            col_l, col_r = st.columns(2)
-            with col_l:
-                st.subheader("Company")
-                st.write(f"**Sector:** {info.get('sector','N/A')}")
-                st.write(f"**Industry:** {info.get('industry','N/A')}")
-                st.write(f"**Country:** {info.get('country','N/A')}")
-                employees = info.get('fullTimeEmployees')
-                st.write(f"**Employees:** {employees:,}" if isinstance(employees, int) else f"**Employees:** {employees or 'N/A'}")
-            with col_r:
-                st.subheader("Financials")
-                c1, c2 = st.columns(2)
-                c1.metric("Rev Growth",    f"{(info.get('revenueGrowth') or 0)*100:.1f}%")
-                c2.metric("Profit Margin", f"{(info.get('profitMargins') or 0)*100:.1f}%")
-                c1.metric("ROE",           f"{(info.get('returnOnEquity') or 0)*100:.1f}%")
-                c2.metric("D/E Ratio",     f"{info.get('debtToEquity','N/A')}")
+            tenk_ticker = st.text_input("Ticker (optional, for context)", placeholder="AAPL", key="tenk_ticker").upper()
+            if filing_text and st.button("🔍 Analyze Filing", type="primary", key="tenk_run"):
+                with st.spinner("Claude is reading the filing…"):
+                    result_filing = analyze_filing(filing_text, tenk_ticker or "Unknown")
+                if result_filing:
+                    st.markdown(result_filing)
+                else:
+                    st.error("Analysis failed. Check your API key.")
 
-            summary = info.get("longBusinessSummary", "")
-            if summary:
-                with st.expander("Business Summary"):
-                    st.write(summary)
+    with analysis_sub1:
+        if not has_key():
+            st.info("💡 Go to **Settings** to add your Anthropic API key and unlock AI analysis.")
 
-            targets = get_analyst_targets(ticker)
-            if targets.get("mean"):
-                st.divider()
-                st.markdown("<div style='font-size:11px;font-weight:700;color:#4a6a8a;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;'>Analyst Consensus</div>", unsafe_allow_html=True)
-                curr = targets.get("current") or price
-                mean = targets["mean"]
-                upside = ((mean - curr) / curr * 100) if curr else 0
-                tc1, tc2, tc3, tc4, tc5 = st.columns(5)
-                tc1.metric("Low",     f"${targets.get('low',0):.2f}")
-                tc2.metric("Consensus", f"${mean:.2f}", f"{upside:+.1f}% upside")
-                tc3.metric("High",    f"${targets.get('high',0):.2f}")
-                tc4.metric("Rating",  (targets.get("rec") or "").replace("_"," ").upper() or "N/A")
-                tc5.metric("Analysts", targets.get("num", 0))
+        col_in, col_btn = st.columns([3, 1])
+        default_ticker = st.session_state.get("analyze_ticker", "")
+        ticker_input = col_in.text_input("Ticker symbol", value=default_ticker,
+                                          placeholder="e.g. NVDA, AAPL, AMXL.MX", key="ai_analysis_ticker")
+        period = st.session_state.get("period", "1y")
+        analyze = col_btn.button("Analyze", type="primary", use_container_width=True, key="ai_analyze_btn")
 
-            news = get_ticker_news(ticker)
-            if news:
-                st.divider()
-                st.markdown("<div style='font-size:11px;font-weight:700;color:#4a6a8a;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;'>Latest News</div>", unsafe_allow_html=True)
-                for n in news[:5]:
-                    st.markdown(f"""
-                    <div class='card' style='padding:12px 16px;margin-bottom:8px;'>
-                      <a href='{n.get("url","#")}' target='_blank' style='color:#7eb8e8;font-weight:600;font-size:13px;text-decoration:none;'>{n.get("title","")}</a>
-                      <div style='color:#4a6a8a;font-size:11px;margin-top:4px;'>{n.get("publisher","")} · {n.get("date","")[:10]}</div>
-                    </div>""", unsafe_allow_html=True)
+        if not ticker_input:
+            st.info("Enter a ticker symbol above to begin analysis.")
+        else:
+            ticker = ticker_input.strip().upper()
+            st.session_state.analyze_ticker = ticker
 
-            st.divider()
-            st.subheader("🤖 AI Analysis")
-            if not has_key():
-                no_key_banner("AI analysis")
+            with st.spinner(f"Loading data for {ticker}…"):
+                info, hist = get_stock_data(ticker, period)
+
+            if info is None or hist is None or len(hist) == 0:
+                st.error(f"Could not retrieve data for **{ticker}**. Check the symbol and try again.")
             else:
-                if analyze or st.button("🔍 Run AI Analysis", type="primary", key="ai_run_analysis"):
-                    analysis_box = st.empty()
-                    full_text = ""
-                    with st.spinner(f"Analyzing {ticker} with Claude AI…"):
-                        for chunk in analyze_stock(ticker):
-                            full_text += chunk
-                            analysis_box.markdown(full_text + "▌")
-                    analysis_box.markdown(full_text)
-                    st.session_state.analyses.append({
-                        "ticker": ticker, "name": name, "date": date.today().isoformat(),
-                        "rec": scores["rec"], "score": scores["composite"], "text": full_text,
-                        "info": {k: info.get(k) for k in ("sector","industry","currentPrice","marketCap")},
-                    })
-                    if is_configured(): save_user_data(st.session_state.get("username",""))
-                    st.success("Analysis saved to History.")
+                price   = info.get("currentPrice") or info.get("regularMarketPrice") or hist["Close"].iloc[-1]
+                prev    = info.get("previousClose", price) or price
+                delta   = price - prev
+                delta_p = delta / prev * 100 if prev else 0
+                name    = info.get("longName", ticker)
+
+                st.markdown(f"## {ticker} — {name}")
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
+                c1.metric("Price",      f"${price:.2f}", f"{delta_p:+.2f}%")
+                pe = info.get("trailingPE")
+                c2.metric("P/E (TTM)",  f"{pe:.1f}" if pe else "N/A")
+                mc = info.get("marketCap", 0)
+                c3.metric("Market Cap", f"${mc/1e9:.1f}B" if mc else "N/A")
+                c4.metric("52W High",   f"${info.get('fiftyTwoWeekHigh', 0):.2f}")
+                c5.metric("52W Low",    f"${info.get('fiftyTwoWeekLow',  0):.2f}")
+                div = (info.get("dividendYield") or 0) * 100
+                c6.metric("Div Yield",  f"{div:.2f}%")
+
+                scores = score_stock(info, hist)
+                sc_cols = st.columns(7)
+                tier_color = COLOR_SUCCESS if scores["tier"] == 1 else COLOR_WARNING if scores["tier"] == 2 else COLOR_DANGER
+                sc_cols[0].metric("Composite",  f"{scores['composite']}/10")
+                sc_cols[1].metric("Valuation",  scores["valuation"])
+                sc_cols[2].metric("Growth",     scores["growth"])
+                sc_cols[3].metric("Quality",    scores["quality"])
+                sc_cols[4].metric("Technical",  scores["technical"])
+                sc_cols[5].metric("Momentum",   scores["momentum"])
+                sc_cols[6].metric("Sentiment",  scores["sentiment"])
+                st.markdown(f"**Recommendation: <span style='color:{tier_color};font-size:20px;'>{scores['rec']}</span>**",
+                            unsafe_allow_html=True)
+
+                st.divider()
+                chart_type = st.radio("Chart type", ["Line + MAs", "Candlestick"], horizontal=True, key="ai_chart_type")
+                period_sel = st.select_slider("Period", options=["30d","100d","6mo","1y","2y","3y","5y"],
+                                              value=period, key="ai_period_sel")
+                if period_sel != period:
+                    st.session_state.period = period_sel
+                    st.rerun()
+
+                if chart_type == "Candlestick":
+                    st.plotly_chart(candlestick_chart(hist, ticker), use_container_width=True)
+                else:
+                    st.plotly_chart(price_chart(hist, ticker), use_container_width=True)
+
+                st.divider()
+                col_l, col_r = st.columns(2)
+                with col_l:
+                    st.subheader("Company")
+                    st.write(f"**Sector:** {info.get('sector','N/A')}")
+                    st.write(f"**Industry:** {info.get('industry','N/A')}")
+                    st.write(f"**Country:** {info.get('country','N/A')}")
+                    employees = info.get('fullTimeEmployees')
+                    st.write(f"**Employees:** {employees:,}" if isinstance(employees, int) else f"**Employees:** {employees or 'N/A'}")
+                with col_r:
+                    st.subheader("Financials")
+                    c1, c2 = st.columns(2)
+                    c1.metric("Rev Growth",    f"{(info.get('revenueGrowth') or 0)*100:.1f}%")
+                    c2.metric("Profit Margin", f"{(info.get('profitMargins') or 0)*100:.1f}%")
+                    c1.metric("ROE",           f"{(info.get('returnOnEquity') or 0)*100:.1f}%")
+                    c2.metric("D/E Ratio",     f"{info.get('debtToEquity','N/A')}")
+
+                summary = info.get("longBusinessSummary", "")
+                if summary:
+                    with st.expander("Business Summary"):
+                        st.write(summary)
+
+                targets = get_analyst_targets(ticker)
+                if targets.get("mean"):
+                    st.divider()
+                    st.markdown("<div style='font-size:11px;font-weight:700;color:#4a6a8a;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;'>Analyst Consensus</div>", unsafe_allow_html=True)
+                    curr = targets.get("current") or price
+                    mean = targets["mean"]
+                    upside = ((mean - curr) / curr * 100) if curr else 0
+                    tc1, tc2, tc3, tc4, tc5 = st.columns(5)
+                    tc1.metric("Low",       f"${targets.get('low',0):.2f}")
+                    tc2.metric("Consensus", f"${mean:.2f}", f"{upside:+.1f}% upside")
+                    tc3.metric("High",      f"${targets.get('high',0):.2f}")
+                    tc4.metric("Rating",    (targets.get("rec") or "").replace("_"," ").upper() or "N/A")
+                    tc5.metric("Analysts",  targets.get("num", 0))
+
+                news = get_ticker_news(ticker)
+                if news:
+                    st.divider()
+                    st.markdown("<div style='font-size:11px;font-weight:700;color:#4a6a8a;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;'>Latest News</div>", unsafe_allow_html=True)
+                    for n in news[:5]:
+                        st.markdown(f"""
+                        <div class='card' style='padding:12px 16px;margin-bottom:8px;'>
+                          <a href='{n.get("url","#")}' target='_blank' style='color:#7eb8e8;font-weight:600;font-size:13px;text-decoration:none;'>{n.get("title","")}</a>
+                          <div style='color:#4a6a8a;font-size:11px;margin-top:4px;'>{n.get("publisher","")} · {n.get("date","")[:10]}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                st.divider()
+                st.subheader("🤖 AI Analysis")
+                if not has_key():
+                    no_key_banner("AI analysis")
+                else:
+                    if analyze or st.button("🔍 Run AI Analysis", type="primary", key="ai_run_analysis"):
+                        analysis_box = st.empty()
+                        full_text = ""
+                        with st.spinner(f"Analyzing {ticker} with Claude AI…"):
+                            for chunk in analyze_stock(ticker):
+                                full_text += chunk
+                                analysis_box.markdown(full_text + "▌")
+                        analysis_box.markdown(full_text)
+                        st.session_state.analyses.append({
+                            "ticker": ticker, "name": name, "date": date.today().isoformat(),
+                            "rec": scores["rec"], "score": scores["composite"], "text": full_text,
+                            "info": {k: info.get(k) for k in ("sector","industry","currentPrice","marketCap")},
+                        })
+                        if is_configured(): save_user_data(st.session_state.get("username",""))
+                        st.success("Analysis saved to History.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -403,7 +446,51 @@ with tab_memos:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — HISTORY
+# TAB 5 — TRADE IDEAS
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_ideas:
+    from utils.ai import has_key, no_key_banner, generate_trade_ideas
+
+    if not has_key():
+        no_key_banner("Trade Ideas")
+    else:
+        st.markdown("<div style='color:#8aadcc;font-size:13px;margin-bottom:16px;'>AI-generated trade setups with specific entry, target, and stop-loss levels based on your watchlist and market context.</div>", unsafe_allow_html=True)
+
+        portfolio  = st.session_state.get("portfolio", [])
+        watchlists = st.session_state.get("watchlists", {})
+        all_tickers = list({h["ticker"] for h in portfolio})
+        for wl in watchlists.values():
+            all_tickers.extend(wl)
+        all_tickers = sorted(set(all_tickers))
+
+        c1, c2, c3 = st.columns(3)
+        selected_tickers = c1.multiselect("Tickers", all_tickers,
+                                           default=all_tickers[:5] if all_tickers else [],
+                                           key="ti_tickers")
+        bias    = c2.radio("Market Bias", ["Bullish", "Neutral", "Bearish"], key="ti_bias", horizontal=True)
+        horizon = c3.selectbox("Horizon", ["Intraday", "Swing (3-10 days)", "Position (1-4 weeks)", "Trend (1-3 months)"], key="ti_horizon")
+
+        if not selected_tickers:
+            st.info("Add tickers to your watchlist or portfolio first.")
+        elif st.button("🧠 Generate Trade Ideas", type="primary", key="ti_run"):
+            ctx = f"Portfolio: {', '.join(h['ticker'] for h in portfolio[:10])}\n"
+            ctx += f"Watchlists: {', '.join(all_tickers[:15])}"
+            with st.spinner("Generating trade setups…"):
+                ideas = generate_trade_ideas(selected_tickers, bias, horizon, ctx)
+            if ideas:
+                st.session_state["_trade_ideas"] = ideas
+            else:
+                st.error("Generation failed. Check your Anthropic API key.")
+
+        if st.session_state.get("_trade_ideas"):
+            st.markdown(st.session_state["_trade_ideas"])
+            st.download_button("⬇️ Export Ideas",
+                               st.session_state["_trade_ideas"],
+                               file_name="trade_ideas.md", key="ti_dl")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 6 — HISTORY
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_history:
     analyses    = st.session_state.get("analyses", [])

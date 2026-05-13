@@ -8,8 +8,8 @@ st.markdown("""
   <div class='page-subtitle'>Screener · ETF Analysis · Sectors · AI Picks</div>
 </div>""", unsafe_allow_html=True)
 
-tab_screen, tab_etf, tab_sectors, tab_picks = st.tabs([
-    "🔍 Screener", "📈 ETF Analysis", "🌐 Sectors & Macro", "⭐ AI Picks"
+tab_screen, tab_etf, tab_sectors, tab_picks, tab_inst, tab_crypto = st.tabs([
+    "🔍 Screener", "📈 ETF Analysis", "🌐 Sectors & Macro", "⭐ AI Picks", "🏛️ Institutional", "₿ Crypto"
 ])
 
 
@@ -324,3 +324,162 @@ with tab_picks:
                 st.caption(f"Generated on {date.today().isoformat()}")
             else:
                 st.error("Error generating picks. Check your API key in Settings.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — INSTITUTIONAL
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_inst:
+    import yfinance as yf
+
+    st.markdown("<div style='color:#8aadcc;font-size:13px;margin-bottom:16px;'>See what institutional investors hold in your portfolio and watchlist stocks.</div>", unsafe_allow_html=True)
+
+    portfolio  = st.session_state.get("portfolio", [])
+    watchlists = st.session_state.get("watchlists", {})
+    all_tickers_inst = list({h["ticker"] for h in portfolio})
+    for wl in watchlists.values():
+        all_tickers_inst.extend(wl)
+    all_tickers_inst = sorted(set(all_tickers_inst))[:15]
+
+    if not all_tickers_inst:
+        st.info("Add holdings or watchlist tickers to see institutional data.")
+    else:
+        sel_inst = st.selectbox("Select ticker", all_tickers_inst, key="inst_sel")
+
+        if st.button("🔍 Fetch Institutional Data", key="inst_run"):
+            with st.spinner("Fetching institutional holders…"):
+                try:
+                    t_obj = yf.Ticker(sel_inst)
+                    inst_holders = t_obj.institutional_holders
+                    major_holders = t_obj.major_holders
+                    st.session_state[f"_inst_{sel_inst}"] = {
+                        "institutional": inst_holders,
+                        "major": major_holders,
+                    }
+                except Exception as e:
+                    st.error(f"Could not fetch data: {e}")
+
+        inst_data = st.session_state.get(f"_inst_{sel_inst}")
+        if inst_data:
+            maj = inst_data.get("major")
+            if maj is not None and not maj.empty:
+                st.subheader("📊 Major Holders")
+                st.dataframe(maj, use_container_width=True, hide_index=True)
+
+            inst = inst_data.get("institutional")
+            if inst is not None and not inst.empty:
+                st.subheader(f"🏛️ Top Institutional Holders — {sel_inst}")
+                display = inst.copy()
+                if "pctHeld" in display.columns:
+                    display["pctHeld"] = (display["pctHeld"] * 100).round(2).astype(str) + "%"
+                if "Value" in display.columns:
+                    display["Value"] = display["Value"].apply(
+                        lambda x: f"${x/1e9:.2f}B" if x > 1e9 else f"${x/1e6:.0f}M"
+                    )
+                st.dataframe(display, use_container_width=True, hide_index=True)
+            else:
+                st.info("No institutional holder data available for this ticker.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 6 — CRYPTO
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_crypto:
+    import yfinance as yf
+    import plotly.graph_objects as go
+    from utils.config import COLOR_SUCCESS, COLOR_DANGER, COLOR_PRIMARY
+
+    CRYPTO_TICKERS = {
+        "Bitcoin":   "BTC-USD", "Ethereum": "ETH-USD", "BNB":      "BNB-USD",
+        "Solana":    "SOL-USD", "XRP":      "XRP-USD", "Cardano":  "ADA-USD",
+        "Avalanche": "AVAX-USD","Dogecoin": "DOGE-USD","Polkadot": "DOT-USD",
+        "Chainlink": "LINK-USD",
+    }
+
+    @st.cache_data(ttl=300)
+    def _get_crypto_hist(symbol: str, period: str):
+        try:
+            hist = yf.Ticker(symbol).history(period=period)
+            info = yf.Ticker(symbol).info or {}
+            return hist, info
+        except Exception:
+            return None, {}
+
+    period_c = st.radio("Chart period", ["1d", "7d", "30d", "90d"], horizontal=True, key="crypto_period", index=1)
+    selected_crypto = st.multiselect(
+        "Select assets", list(CRYPTO_TICKERS.keys()),
+        default=["Bitcoin", "Ethereum", "Solana", "BNB"],
+        key="crypto_sel",
+    )
+
+    if not selected_crypto:
+        st.info("Select at least one crypto asset above.")
+    else:
+        with st.spinner("Fetching crypto prices…"):
+            COLS = 3
+            crypto_rows = []
+            for name in selected_crypto:
+                sym = CRYPTO_TICKERS[name]
+                try:
+                    hist, info = _get_crypto_hist(sym, period_c)
+                    if hist is None or hist.empty:
+                        continue
+                    price = float(hist["Close"].iloc[-1])
+                    open_p = float(hist["Close"].iloc[0])
+                    chg_pct = (price - open_p) / open_p * 100 if open_p else 0
+                    mktcap = info.get("marketCap") or 0
+                    crypto_rows.append({
+                        "name": name, "symbol": sym, "price": price,
+                        "chg_pct": chg_pct, "mktcap": mktcap, "hist": hist,
+                    })
+                except Exception:
+                    continue
+
+        if crypto_rows:
+            # Price cards
+            for i in range(0, len(crypto_rows), COLS):
+                chunk = crypto_rows[i:i + COLS]
+                cols  = st.columns(COLS)
+                for col, r in zip(cols, chunk):
+                    chg_color = COLOR_SUCCESS if r["chg_pct"] >= 0 else COLOR_DANGER
+                    chg_arrow = "▲" if r["chg_pct"] >= 0 else "▼"
+                    mc_str = f"${r['mktcap']/1e9:.1f}B" if r["mktcap"] > 1e9 else ""
+                    price_fmt = f"${r['price']:,.2f}" if r["price"] > 1 else f"${r['price']:.6f}"
+                    with col:
+                        st.markdown(f"""
+                        <div class='card' style='padding:16px;margin-bottom:4px;'>
+                          <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
+                            <div>
+                              <div style='font-size:15px;font-weight:800;color:#c8d8f0;'>{r["name"]}</div>
+                              <div style='font-size:10px;color:#4a6a8a;'>{r["symbol"]}</div>
+                            </div>
+                            <div style='text-align:right;'>
+                              <div style='font-size:17px;font-weight:700;color:#e8edf8;'>{price_fmt}</div>
+                              <div style='font-size:12px;font-weight:600;color:{chg_color};'>{chg_arrow} {abs(r["chg_pct"]):.2f}%</div>
+                            </div>
+                          </div>
+                          {f"<div style='font-size:10px;color:#3a5a7a;margin-top:4px;'>Mkt Cap: {mc_str}</div>" if mc_str else ""}
+                        </div>""", unsafe_allow_html=True)
+
+            # Comparison chart (normalized)
+            st.divider()
+            fig_c = go.Figure()
+            palette = [COLOR_PRIMARY, COLOR_SUCCESS, "#F59E0B", "#8B5CF6", "#EF4444",
+                       "#14B8A6", "#F97316", "#EC4899", "#06B6D4", "#84CC16"]
+            for idx, r in enumerate(crypto_rows):
+                y = r["hist"]["Close"]
+                yn = y / y.iloc[0] * 100 if len(y) > 0 else y
+                fig_c.add_trace(go.Scatter(
+                    x=r["hist"].index, y=yn, mode="lines",
+                    name=r["name"],
+                    line=dict(color=palette[idx % len(palette)], width=2)))
+            fig_c.update_layout(
+                template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                title="Crypto Performance — Indexed (100 = start of period)",
+                yaxis_title="Indexed Value",
+                xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                hovermode="x unified", height=420, font=dict(color="#A1A1AA"),
+                legend=dict(orientation="h", y=1.02),
+                margin=dict(l=48, r=24, t=44, b=36))
+            st.plotly_chart(fig_c, use_container_width=True)
