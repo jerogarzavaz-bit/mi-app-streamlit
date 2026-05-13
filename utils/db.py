@@ -85,3 +85,45 @@ def load_user_data(username: str) -> bool:
 
 def is_configured() -> bool:
     return _get_db() is not None
+
+
+# ── Auth credentials (stored in Firestore so secrets.toml is not needed) ──────
+
+def get_auth_credentials() -> dict | None:
+    """Return credentials dict from Firestore, or None if unavailable."""
+    db = _get_db()
+    if db is None:
+        return None
+    try:
+        doc = db.collection("app_config").document("credentials").get()
+        if doc.exists:
+            return doc.to_dict()
+        return None
+    except Exception:
+        return None
+
+
+def save_auth_credentials(creds: dict) -> bool:
+    """Persist the full credentials dict to Firestore."""
+    db = _get_db()
+    if db is None:
+        return False
+    try:
+        db.collection("app_config").document("credentials").set(_clean(creds))
+        return True
+    except Exception:
+        return False
+
+
+def seed_auth_credentials(creds: dict) -> bool:
+    """Write credentials only if the Firestore doc doesn't exist yet."""
+    db = _get_db()
+    if db is None:
+        return False
+    try:
+        ref = db.collection("app_config").document("credentials")
+        if not ref.get().exists:
+            ref.set(_clean(creds))
+        return True
+    except Exception:
+        return False

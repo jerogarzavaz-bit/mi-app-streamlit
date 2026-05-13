@@ -6,43 +6,66 @@ import streamlit_authenticator as stauth
 
 def hash_password(plain: str) -> str:
     import bcrypt
-    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(12)).decode()
 
 
-def _get_credentials() -> dict:
-    """Load credentials from st.secrets (set in Streamlit Cloud dashboard)."""
+def _secrets_credentials() -> dict | None:
+    """Load credentials from st.secrets (fallback when Firestore is unavailable)."""
     try:
         raw = st.secrets["credentials"]
-        # Convert from AttrDict to plain dict recursively
         def _to_dict(obj):
             if hasattr(obj, "items"):
                 return {k: _to_dict(v) for k, v in obj.items()}
             return obj
         return _to_dict(raw)
     except Exception:
-        # Fallback: demo account so the app doesn't crash before secrets are set
-        demo_hash = hash_password("demo1234")
-        return {
-            "usernames": {
-                "admin": {
-                    "name": "Admin",
-                    "email": "admin@stockanalyzer.com",
-                    "password": demo_hash,
-                    "role": "admin",
-                }
+        return None
+
+
+def _get_credentials() -> dict:
+    """
+    Credential priority:
+      1. Firestore app_config/credentials  (always in sync, works on all devices)
+      2. st.secrets["credentials"]         (local secrets.toml / Streamlit Cloud)
+      3. Hardcoded demo fallback            (so the app never crashes)
+    On first load with Firestore available, seeds Firestore from secrets if empty.
+    """
+    from utils.db import get_auth_credentials, seed_auth_credentials
+
+    # Try Firestore
+    fs_creds = get_auth_credentials()
+    if fs_creds and fs_creds.get("usernames"):
+        return fs_creds
+
+    # Firestore empty or unavailable — try secrets
+    sec_creds = _secrets_credentials()
+    if sec_creds and sec_creds.get("usernames"):
+        # Seed Firestore so future logins use it (only writes if doc missing)
+        seed_auth_credentials(sec_creds)
+        return sec_creds
+
+    # Last-resort demo account
+    return {
+        "usernames": {
+            "admin": {
+                "name": "Admin",
+                "email": "admin@thebullmonkey.com",
+                "password": hash_password("Admin12345"),
+                "role": "admin",
             }
         }
+    }
 
 
 def get_authenticator() -> stauth.Authenticate:
     creds = _get_credentials()
     try:
         cookie = st.secrets["cookie"]
-        c_name    = cookie["name"]
-        c_key     = cookie["key"]
-        c_expiry  = int(cookie.get("expiry_days", 30))
+        c_name   = cookie["name"]
+        c_key    = cookie["key"]
+        c_expiry = int(cookie.get("expiry_days", 30))
     except Exception:
-        c_name, c_key, c_expiry = "sap_cookie", "change_this_secret_key_123!", 30
+        c_name, c_key, c_expiry = "bullmonkey_cookie", "bullmonkey_secret_key_change_me_2025", 30
 
     return stauth.Authenticate(creds, c_name, c_key, cookie_expiry_days=c_expiry, auto_hash=False)
 

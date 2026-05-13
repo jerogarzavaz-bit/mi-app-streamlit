@@ -184,72 +184,79 @@ st.divider()
 
 # ── User Management (admin only) ──────────────────────────────────────────────
 if is_admin():
+    from utils.db import get_auth_credentials, save_auth_credentials
+
     st.subheader("👥 User Management")
-    st.info("Add new users by updating your Streamlit Cloud secrets. Use the tool below to generate the password hash.")
 
-    with st.expander("🔐 Generate Password Hash"):
-        st.write("Enter a plain password to get the bcrypt hash to put in your secrets.")
-        new_pass = st.text_input("New password", type="password", key="gen_pass")
-        if new_pass and st.button("Generate Hash"):
-            hashed = hash_password(new_pass)
-            st.code(hashed, language=None)
-            st.caption("Copy this hash — you'll need it in the secrets TOML below.")
+    creds = get_auth_credentials() or {"usernames": {}}
+    users = creds.get("usernames", {})
 
-    with st.expander("📋 How to add a new user"):
-        st.markdown("""
-**1.** Generate the password hash above.
+    if not users:
+        st.info("No users found in Firestore yet. Save a user below to get started.")
+    else:
+        st.markdown(f"**{len(users)} users** registered")
+        for uname, udata in sorted(users.items()):
+            role_badge = (
+                "🔴 admin" if udata.get("role") == "admin"
+                else "🟡 guest" if udata.get("role") == "guest"
+                else "⚪ user"
+            )
+            c1, c2, c3, c4 = st.columns([2, 2, 1.5, 1])
+            c1.markdown(f"`{uname}`")
+            c2.markdown(f"<span style='font-size:12px;color:var(--text-muted);'>{udata.get('name','')}</span>", unsafe_allow_html=True)
+            c3.markdown(f"<span style='font-size:11px;'>{role_badge}</span>", unsafe_allow_html=True)
+            if uname != st.session_state.get("username"):  # can't delete yourself
+                if c4.button("Delete", key=f"del_{uname}", type="secondary"):
+                    del creds["usernames"][uname]
+                    if save_auth_credentials(creds):
+                        st.success(f"User `{uname}` deleted.")
+                        st.rerun()
+                    else:
+                        st.error("Failed to save — is Firestore configured?")
 
-**2.** Go to your app in [Streamlit Cloud](https://share.streamlit.io) → **Settings** → **Secrets**.
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-**3.** Add this block for each new user (replace values):
+    with st.expander("➕ Add New User"):
+        c1, c2 = st.columns(2)
+        new_uname  = c1.text_input("Username (no spaces)", key="um_uname").strip().lower()
+        new_name   = c2.text_input("Display Name", key="um_name").strip()
+        new_email  = c1.text_input("Email", key="um_email").strip()
+        new_pwd    = c2.text_input("Password", type="password", key="um_pwd")
+        new_role   = st.selectbox("Role", ["guest", "user", "admin"], key="um_role")
 
-```toml
-[credentials.usernames.NEW_USERNAME]
-name     = "Display Name"
-email    = "user@email.com"
-password = "$2b$12$PASTE_THE_HASH_HERE"
-role     = "user"
-```
+        if st.button("Create User", type="primary", key="um_create"):
+            if not new_uname or not new_pwd:
+                st.error("Username and password are required.")
+            elif new_uname in users:
+                st.error(f"Username `{new_uname}` already exists.")
+            else:
+                creds["usernames"][new_uname] = {
+                    "name":     new_name or new_uname,
+                    "email":    new_email,
+                    "password": hash_password(new_pwd),
+                    "role":     new_role,
+                }
+                if save_auth_credentials(creds):
+                    st.success(f"User `{new_uname}` created with role **{new_role}**.")
+                    st.rerun()
+                else:
+                    st.error("Failed to save — is Firestore configured?")
 
-For admin users, set `role = "admin"`.
-
-**4.** Click **Save** — the app reloads automatically with the new user.
-        """)
-
-    with st.expander("📋 Full secrets.toml template"):
-        st.code("""
-# ── Authentication ────────────────────────
-[credentials.usernames.admin]
-name     = "Admin"
-email    = "admin@yourapp.com"
-password = "$2b$12$HASH_OF_YOUR_PASSWORD"
-role     = "admin"
-
-[credentials.usernames.jero]
-name     = "Jero"
-email    = "jero@email.com"
-password = "$2b$12$HASH_OF_JERO_PASSWORD"
-role     = "user"
-
-[cookie]
-name        = "sap_cookie"
-key         = "replace_with_a_long_random_string_123456"
-expiry_days = 30
-
-# ── Firebase ──────────────────────────────
-[firebase]
-type                        = "service_account"
-project_id                  = "your-project-id"
-private_key_id              = "abc123..."
-private_key                 = "-----BEGIN PRIVATE KEY-----\\nYOUR_KEY\\n-----END PRIVATE KEY-----\\n"
-client_email                = "firebase-adminsdk-xxx@your-project.iam.gserviceaccount.com"
-client_id                   = "123456789"
-auth_uri                    = "https://accounts.google.com/o/oauth2/auth"
-token_uri                   = "https://oauth2.googleapis.com/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url        = "https://www.googleapis.com/robot/v1/metadata/x509/..."
-universe_domain             = "googleapis.com"
-        """, language="toml")
+    with st.expander("🔑 Change Password"):
+        target = st.selectbox("Select user", sorted(users.keys()), key="um_chg_user")
+        new_p1 = st.text_input("New password", type="password", key="um_p1")
+        new_p2 = st.text_input("Confirm password", type="password", key="um_p2")
+        if st.button("Update Password", key="um_chg_btn"):
+            if not new_p1:
+                st.error("Password cannot be empty.")
+            elif new_p1 != new_p2:
+                st.error("Passwords don't match.")
+            else:
+                creds["usernames"][target]["password"] = hash_password(new_p1)
+                if save_auth_credentials(creds):
+                    st.success(f"Password updated for `{target}`.")
+                else:
+                    st.error("Failed to save.")
 
     st.divider()
 
