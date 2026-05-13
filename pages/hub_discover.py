@@ -277,8 +277,8 @@ with tab_sectors:
     if sector_data:
         st.plotly_chart(sector_bar(sector_data), use_container_width=True)
         sec_cols = st.columns(min(4, len(sector_data)))
-        for col, (sec, d) in zip(sec_cols * 10, sector_data.items()):
-            pct = d.get("change_pct", 0)
+        for col, (sec, pct) in zip(sec_cols * 10, sector_data.items()):
+            pct = pct if isinstance(pct, (int, float)) else 0
             color = COLOR_SUCCESS if pct >= 0 else COLOR_DANGER
             col.markdown(f"""
             <div class='card' style='text-align:center;padding:12px;'>
