@@ -362,8 +362,7 @@ pages = [
     st.Page("pages/hub_intelligence.py",  title="Intelligence",   icon="📡"),
     st.Page("pages/hub_ai.py",            title="AI Workspace",   icon="🤖"),
 ]
-if not _is_guest():
-    pages.append(st.Page("pages/20_Settings.py", title="Settings", icon="⚙️"))
+pages.append(st.Page("pages/20_Settings.py", title="Settings", icon="⚙️"))
 
 pg = st.navigation(pages)
 

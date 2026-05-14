@@ -1,11 +1,7 @@
 import streamlit as st
 import json
-from utils.auth import is_admin, is_guest, hash_password
+from utils.auth import is_admin, hash_password
 from utils.db import save_user_data, load_user_data, is_configured, get_connection_error
-
-if is_guest():
-    st.error("Settings are not available for guest accounts.")
-    st.stop()
 
 username = st.session_state.get("username", "")
 
