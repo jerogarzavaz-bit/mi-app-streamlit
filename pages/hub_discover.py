@@ -8,8 +8,9 @@ st.markdown("""
   <div class='page-subtitle'>Screener · ETF Analysis · Sectors · AI Picks</div>
 </div>""", unsafe_allow_html=True)
 
-tab_screen, tab_etf, tab_sectors, tab_picks, tab_inst, tab_crypto = st.tabs([
-    "🔍 Screener", "📈 ETF Analysis", "🌐 Sectors & Macro", "⭐ AI Picks", "🏛️ Institutional", "₿ Crypto"
+tab_screen, tab_etf, tab_sectors, tab_picks, tab_inst, tab_crypto, tab_options, tab_peer = st.tabs([
+    "🔍 Screener", "📈 ETF Analysis", "🌐 Sectors & Macro", "⭐ AI Picks", "🏛️ Institutional",
+    "₿ Markets", "📋 Options", "🔀 Peer Compare"
 ])
 
 
@@ -143,9 +144,39 @@ with tab_screen:
                              column_config={"Price": st.column_config.NumberColumn(format="$%.2f"),
                                             "Chg%": st.column_config.NumberColumn(format="%.2f%%"),
                                             "Score": st.column_config.ProgressColumn(min_value=0, max_value=10, format="%.1f")})
-    else:
-        if not run:
-            st.info("Configure your watchlist above and click **▶ Run Screen** to start.")
+    with st.expander("🎯 Breakout & Short Interest Scanner", expanded=False):
+        import yfinance as yf
+        st.caption("Quickly scan for 52-week breakouts and high short interest.")
+        if st.button("🔍 Scan", key="disc_breakout_scan"):
+            with st.spinner("Scanning…"):
+                bk_rows = []
+                for t in tickers[:20]:
+                    try:
+                        info = yf.Ticker(t).info
+                        p = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+                        hi52 = info.get("fiftyTwoWeekHigh", 0)
+                        lo52 = info.get("fiftyTwoWeekLow", 0)
+                        short_float = (info.get("shortPercentOfFloat", 0) or 0) * 100
+                        pct_from_hi = ((p - hi52) / hi52 * 100) if hi52 else 0
+                        pct_from_lo = ((p - lo52) / lo52 * 100) if lo52 else 0
+                        bk_rows.append({"Ticker": t, "Price": round(p, 2),
+                                        "52W High": round(hi52, 2), "% from High": round(pct_from_hi, 1),
+                                        "52W Low": round(lo52, 2), "% from Low": round(pct_from_lo, 1),
+                                        "Short Float %": round(short_float, 1)})
+                    except:
+                        continue
+                if bk_rows:
+                    df_bk = pd.DataFrame(bk_rows).sort_values("% from High", ascending=False)
+                    st.dataframe(df_bk, use_container_width=True, hide_index=True,
+                                 column_config={"Price": st.column_config.NumberColumn(format="$%.2f"),
+                                                "52W High": st.column_config.NumberColumn(format="$%.2f"),
+                                                "52W Low": st.column_config.NumberColumn(format="$%.2f"),
+                                                "% from High": st.column_config.NumberColumn(format="%.1f%%"),
+                                                "% from Low": st.column_config.NumberColumn(format="%.1f%%"),
+                                                "Short Float %": st.column_config.NumberColumn(format="%.1f%%")})
+
+    if not run:
+        st.info("Configure your watchlist above and click **▶ Run Screen** to start.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -483,3 +514,261 @@ with tab_crypto:
                 legend=dict(orientation="h", y=1.02),
                 margin=dict(l=48, r=24, t=44, b=36))
             st.plotly_chart(fig_c, use_container_width=True)
+
+        st.divider()
+        st.subheader("🥇 Commodities & FX")
+
+        COMMOD_FX_TICKERS = {
+            "Gold":         ("GC=F",      "Commodity"),
+            "Silver":       ("SI=F",      "Commodity"),
+            "Oil WTI":      ("CL=F",      "Commodity"),
+            "Natural Gas":  ("NG=F",      "Commodity"),
+            "EUR/USD":      ("EURUSD=X",  "FX"),
+            "GBP/USD":      ("GBPUSD=X",  "FX"),
+            "USD/JPY":      ("JPY=X",     "FX"),
+            "USD/MXN":      ("MXN=X",     "FX"),
+        }
+
+        @st.cache_data(ttl=300)
+        def _get_commod_fx(symbol: str):
+            try:
+                hist = yf.Ticker(symbol).history(period="5d")
+                return hist
+            except Exception:
+                return None
+
+        with st.spinner("Fetching commodities & FX…"):
+            commod_rows = []
+            for name, (sym, cat) in COMMOD_FX_TICKERS.items():
+                try:
+                    hist = _get_commod_fx(sym)
+                    if hist is None or hist.empty:
+                        continue
+                    price = float(hist["Close"].iloc[-1])
+                    open_p = float(hist["Close"].iloc[0])
+                    chg_pct = (price - open_p) / open_p * 100 if open_p else 0
+                    commod_rows.append({"name": name, "symbol": sym, "category": cat,
+                                        "price": price, "chg_pct": chg_pct})
+                except Exception:
+                    continue
+
+        if commod_rows:
+            COMMOD_COLS = 4
+            for i in range(0, len(commod_rows), COMMOD_COLS):
+                chunk = commod_rows[i:i + COMMOD_COLS]
+                cols = st.columns(COMMOD_COLS)
+                for col, r in zip(cols, chunk):
+                    chg_color = COLOR_SUCCESS if r["chg_pct"] >= 0 else COLOR_DANGER
+                    chg_arrow = "▲" if r["chg_pct"] >= 0 else "▼"
+                    price_fmt = f"${r['price']:,.4f}" if r["category"] == "FX" else f"${r['price']:,.2f}"
+                    with col:
+                        st.markdown(f"""
+                        <div class='card' style='padding:16px;margin-bottom:4px;'>
+                          <div style='display:flex;justify-content:space-between;align-items:flex-start;'>
+                            <div>
+                              <div style='font-size:15px;font-weight:800;color:#c8d8f0;'>{r["name"]}</div>
+                              <div style='font-size:10px;color:#4a6a8a;'>{r["symbol"]}</div>
+                            </div>
+                            <div style='text-align:right;'>
+                              <div style='font-size:17px;font-weight:700;color:#e8edf8;'>{price_fmt}</div>
+                              <div style='font-size:12px;font-weight:600;color:{chg_color};'>{chg_arrow} {abs(r["chg_pct"]):.2f}%</div>
+                            </div>
+                          </div>
+                        </div>""", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 7 — OPTIONS CHAIN
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_options:
+    import yfinance as yf
+    import plotly.graph_objects as go
+    from utils.config import COLOR_SUCCESS, COLOR_DANGER, COLOR_PRIMARY
+
+    st.markdown("View live options chain data: calls, puts, open interest, implied volatility.")
+
+    col1, col2 = st.columns([2, 1])
+    opt_ticker = col1.text_input("Ticker", value="AAPL", key="opt_ticker").upper().strip()
+
+    if st.button("📋 Load Options", type="primary", key="opt_load"):
+        with st.spinner(f"Loading options for {opt_ticker}…"):
+            try:
+                tk = yf.Ticker(opt_ticker)
+                expirations = tk.options
+                if not expirations:
+                    st.error("No options data available for this ticker.")
+                else:
+                    st.session_state[f"_opt_exp_{opt_ticker}"] = expirations
+                    st.session_state[f"_opt_ticker"] = opt_ticker
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    stored_ticker = st.session_state.get("_opt_ticker")
+    expirations = st.session_state.get(f"_opt_exp_{stored_ticker}", [])
+
+    if stored_ticker and expirations:
+        # Show current price
+        try:
+            info = yf.Ticker(stored_ticker).info
+            curr_price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+            st.metric(stored_ticker, f"${curr_price:.2f}")
+        except:
+            curr_price = 0
+
+        sel_exp = st.selectbox("Expiration date", expirations, key="opt_expiry")
+        view = st.radio("View", ["Calls", "Puts", "Both"], horizontal=True, key="opt_view")
+
+        if sel_exp:
+            try:
+                chain = yf.Ticker(stored_ticker).option_chain(sel_exp)
+                calls = chain.calls[["strike","lastPrice","bid","ask","volume","openInterest","impliedVolatility","inTheMoney"]].copy()
+                puts  = chain.puts[["strike","lastPrice","bid","ask","volume","openInterest","impliedVolatility","inTheMoney"]].copy()
+
+                # Format IV as percentage
+                calls["impliedVolatility"] = (calls["impliedVolatility"] * 100).round(1).astype(str) + "%"
+                puts["impliedVolatility"]  = (puts["impliedVolatility"]  * 100).round(1).astype(str) + "%"
+                calls.columns = ["Strike","Last","Bid","Ask","Volume","OI","IV","ITM"]
+                puts.columns  = ["Strike","Last","Bid","Ask","Volume","OI","IV","ITM"]
+
+                # Summary metrics
+                total_call_oi = chain.calls["openInterest"].sum()
+                total_put_oi  = chain.puts["openInterest"].sum()
+                pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Call OI", f"{total_call_oi:,.0f}")
+                m2.metric("Put OI", f"{total_put_oi:,.0f}")
+                pcr_color = "normal" if pcr < 1 else "inverse"
+                m3.metric("Put/Call Ratio", f"{pcr:.2f}", delta="bearish" if pcr > 1 else "bullish", delta_color=pcr_color)
+
+                # OI chart
+                fig_oi = go.Figure()
+                fig_oi.add_bar(x=chain.calls["strike"], y=chain.calls["openInterest"], name="Calls OI", marker_color=COLOR_SUCCESS)
+                fig_oi.add_bar(x=chain.puts["strike"],  y=chain.puts["openInterest"],  name="Puts OI",  marker_color=COLOR_DANGER)
+                if curr_price:
+                    fig_oi.add_vline(x=curr_price, line_dash="dash", line_color="#F59E0B", annotation_text=f"Price ${curr_price:.2f}")
+                fig_oi.update_layout(
+                    template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                    title=f"Open Interest by Strike — {stored_ticker} {sel_exp}",
+                    barmode="group", height=380,
+                    xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                    yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                    font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36))
+                st.plotly_chart(fig_oi, use_container_width=True)
+
+                # Tables
+                if view in ("Calls", "Both"):
+                    st.subheader("📈 Calls")
+                    st.dataframe(calls, use_container_width=True, hide_index=True)
+                if view in ("Puts", "Both"):
+                    st.subheader("📉 Puts")
+                    st.dataframe(puts, use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"Could not load chain: {e}")
+    else:
+        st.markdown("""
+        <div class='card' style='text-align:center;color:#4a6a8a;padding:40px;'>
+          <div style='font-size:36px;margin-bottom:12px;'>📋</div>
+          <div style='font-size:15px;font-weight:600;color:#6a8aaa;margin-bottom:8px;'>Options Chain</div>
+          <div style='font-size:13px;'>Enter a ticker and click <strong style='color:#7eb8e8;'>Load Options</strong> to view the live chain.</div>
+        </div>""", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 8 — PEER COMPARISON
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_peer:
+    import yfinance as yf
+    import pandas as pd
+    import plotly.graph_objects as go
+    from utils.config import COLOR_SUCCESS, COLOR_DANGER
+
+    st.markdown("Compare key financial metrics side-by-side across a group of peers.")
+
+    PEER_GROUPS = {
+        "Mag 7": "AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA",
+        "Big Banks": "JPM,BAC,WFC,GS,MS,C",
+        "Energy": "XOM,CVX,COP,EOG,SLB",
+        "Semis": "NVDA,AMD,INTC,QCOM,AVGO,TSM",
+        "EV": "TSLA,RIVN,LCID,NIO,GM,F",
+    }
+
+    col1, col2 = st.columns([2, 1])
+    preset = col1.selectbox("Preset group", ["Custom"] + list(PEER_GROUPS.keys()), key="peer_preset")
+
+    if preset != "Custom":
+        default_peer = PEER_GROUPS[preset]
+    else:
+        default_peer = "AAPL,MSFT,GOOGL"
+
+    raw_peer = st.text_input("Tickers (comma-separated)", value=default_peer, key="peer_tickers")
+    peer_tickers = [t.strip().upper() for t in raw_peer.split(",") if t.strip()][:12]
+
+    if st.button("🔀 Compare", type="primary", key="peer_run"):
+        with st.spinner(f"Fetching data for {len(peer_tickers)} tickers…"):
+            rows = []
+            for t in peer_tickers:
+                try:
+                    info = yf.Ticker(t).fast_info
+                    full = yf.Ticker(t).info
+                    rows.append({
+                        "Ticker": t,
+                        "Price": round(getattr(info, "last_price", 0) or 0, 2),
+                        "Mkt Cap": full.get("marketCap", 0),
+                        "P/E": round(full.get("trailingPE", 0) or 0, 1),
+                        "Fwd P/E": round(full.get("forwardPE", 0) or 0, 1),
+                        "PEG": round(full.get("pegRatio", 0) or 0, 2),
+                        "P/S": round(full.get("priceToSalesTrailing12Months", 0) or 0, 1),
+                        "P/B": round(full.get("priceToBook", 0) or 0, 1),
+                        "Rev Growth": round((full.get("revenueGrowth", 0) or 0) * 100, 1),
+                        "Profit Margin": round((full.get("profitMargins", 0) or 0) * 100, 1),
+                        "ROE": round((full.get("returnOnEquity", 0) or 0) * 100, 1),
+                        "Div Yield": round((full.get("dividendYield", 0) or 0) * 100, 2),
+                        "52W High": round(full.get("fiftyTwoWeekHigh", 0) or 0, 2),
+                        "52W Low": round(full.get("fiftyTwoWeekLow", 0) or 0, 2),
+                        "Analyst Target": round(full.get("targetMeanPrice", 0) or 0, 2),
+                        "Short Float %": round((full.get("shortPercentOfFloat", 0) or 0) * 100, 1),
+                    })
+                except:
+                    rows.append({"Ticker": t, "Price": 0, "Mkt Cap": 0, "P/E": 0, "Fwd P/E": 0,
+                                 "PEG": 0, "P/S": 0, "P/B": 0, "Rev Growth": 0, "Profit Margin": 0,
+                                 "ROE": 0, "Div Yield": 0, "52W High": 0, "52W Low": 0,
+                                 "Analyst Target": 0, "Short Float %": 0})
+
+            df_peer = pd.DataFrame(rows)
+            st.session_state["_peer_df"] = df_peer
+
+    df_peer = st.session_state.get("_peer_df")
+    if df_peer is not None and not df_peer.empty:
+        # Format Mkt Cap
+        df_display = df_peer.copy()
+        df_display["Mkt Cap"] = df_display["Mkt Cap"].apply(
+            lambda x: f"${x/1e12:.2f}T" if x > 1e12 else f"${x/1e9:.1f}B" if x > 1e9 else f"${x/1e6:.0f}M"
+        )
+        df_display["Price"] = df_display["Price"].apply(lambda x: f"${x:.2f}")
+        df_display["Analyst Target"] = df_display["Analyst Target"].apply(lambda x: f"${x:.2f}" if x > 0 else "—")
+
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+        # Bar chart comparison — select metric
+        st.divider()
+        numeric_cols = ["P/E", "Fwd P/E", "P/S", "P/B", "Rev Growth", "Profit Margin", "ROE", "Div Yield", "Short Float %"]
+        metric = st.selectbox("Compare metric", numeric_cols, key="peer_metric")
+
+        fig_peer = go.Figure()
+        vals = df_peer[metric].tolist()
+        colors = [COLOR_SUCCESS if v >= 0 else COLOR_DANGER for v in vals]
+        fig_peer.add_bar(x=df_peer["Ticker"], y=vals, marker_color=colors)
+        fig_peer.update_layout(
+            template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+            title=f"Peer Comparison — {metric}", height=380,
+            xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+            yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+            font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36))
+        st.plotly_chart(fig_peer, use_container_width=True)
+    elif df_peer is None:
+        st.markdown("""
+        <div class='card' style='text-align:center;color:#4a6a8a;padding:40px;'>
+          <div style='font-size:36px;margin-bottom:12px;'>🔀</div>
+          <div style='font-size:15px;font-weight:600;color:#6a8aaa;margin-bottom:8px;'>Peer Comparison</div>
+          <div style='font-size:13px;'>Select a preset group or enter tickers, then click <strong style='color:#7eb8e8;'>Compare</strong>.</div>
+        </div>""", unsafe_allow_html=True)

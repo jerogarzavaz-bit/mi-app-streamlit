@@ -7,8 +7,9 @@ st.markdown("""
   <div class='page-subtitle'>Morning Brief · News · Calendar · Insiders · Transcripts</div>
 </div>""", unsafe_allow_html=True)
 
-tab_brief, tab_news, tab_cal, tab_insider, tab_transcript = st.tabs([
-    "☀️ Morning Brief", "📰 News", "📅 Calendar", "🏦 Insiders", "🎙️ Transcripts"
+tab_brief, tab_news, tab_cal, tab_insider, tab_transcript, tab_macro, tab_curve = st.tabs([
+    "☀️ Morning Brief", "📰 News", "📅 Calendar", "🏦 Insiders", "🎙️ Transcripts",
+    "📊 Macro Dashboard", "〰️ Yield Curve"
 ])
 
 username = st.session_state.get("username", "")
@@ -287,6 +288,50 @@ with tab_cal:
             else:
                 st.info("No upcoming earnings found for these tickers.")
 
+            # EPS Surprise history for selected ticker
+            st.divider()
+            st.subheader("📈 EPS Surprise History")
+            st.caption("Historical EPS: actual vs estimate for a specific ticker.")
+            eps_ticker = st.text_input("Ticker for EPS history", value="AAPL", key="cal_eps_ticker").upper()
+            if st.button("Load EPS History", key="cal_eps_run"):
+                try:
+                    import yfinance as yf
+                    tk = yf.Ticker(eps_ticker)
+                    earnings_hist = tk.earnings_history
+                    if earnings_hist is not None and not earnings_hist.empty:
+                        import plotly.graph_objects as go
+                        from utils.config import COLOR_SUCCESS, COLOR_DANGER
+
+                        df_eps = earnings_hist.tail(8).copy()
+                        if "epsActual" in df_eps.columns and "epsEstimate" in df_eps.columns:
+                            surprise = df_eps["epsActual"] - df_eps["epsEstimate"]
+                            colors = [COLOR_SUCCESS if s >= 0 else COLOR_DANGER for s in surprise]
+
+                            fig_eps = go.Figure()
+                            fig_eps.add_bar(x=df_eps.index.astype(str), y=df_eps["epsEstimate"],
+                                           name="EPS Estimate", marker_color="rgba(97,114,243,0.6)")
+                            fig_eps.add_bar(x=df_eps.index.astype(str), y=df_eps["epsActual"],
+                                           name="EPS Actual", marker_color="rgba(34,197,94,0.8)")
+                            fig_eps.update_layout(
+                                template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                                title=f"{eps_ticker} — EPS: Actual vs Estimate", barmode="group",
+                                height=350, font=dict(color="#A1A1AA"),
+                                xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                                yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                                margin=dict(l=48, r=24, t=44, b=36))
+                            st.plotly_chart(fig_eps, use_container_width=True)
+
+                            df_show = df_eps[["epsEstimate","epsActual"]].copy()
+                            df_show["Surprise"] = surprise
+                            df_show["Surprise %"] = (surprise / df_eps["epsEstimate"].abs() * 100).round(1)
+                            st.dataframe(df_show, use_container_width=True)
+                        else:
+                            st.dataframe(df_eps, use_container_width=True)
+                    else:
+                        st.info("No earnings history available for this ticker.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
     with cal_sub2:
         with st.spinner("Loading macro events…"):
             macro_events = get_macro_events_this_week()
@@ -391,3 +436,241 @@ with tab_transcript:
               <div style='font-size:14px;'>Paste or upload an earnings call transcript, then click Analyze.</div>
               <div style='font-size:12px;margin-top:8px;color:#3a5a7a;'>Claude extracts tone, guidance, risks, and analyst concerns.</div>
             </div>""", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 6 — MACRO DASHBOARD (FRED)
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_macro:
+    import requests
+    import pandas as pd
+    import plotly.graph_objects as go
+    from utils.config import COLOR_PRIMARY, COLOR_SUCCESS, COLOR_DANGER
+
+    st.markdown("Key macroeconomic indicators from the St. Louis Fed (FRED).")
+
+    fred_key = st.session_state.get("api_keys", {}).get("fred", "")
+    if not fred_key:
+        st.warning("Add your FRED API key in **Settings → API Keys** to unlock macro charts. Get one free at fred.stlouisfed.org")
+        fred_key_input = st.text_input("Or enter FRED API key here (not saved)", type="password", key="macro_fred_tmp")
+        if fred_key_input:
+            fred_key = fred_key_input
+
+    @st.cache_data(ttl=3600)
+    def _fred_series(series_id: str, api_key: str, limit: int = 60) -> pd.Series | None:
+        try:
+            url = f"https://api.stlouisfed.org/fred/series/observations"
+            params = {"series_id": series_id, "api_key": api_key, "file_type": "json",
+                      "sort_order": "desc", "limit": limit}
+            r = requests.get(url, params=params, timeout=10)
+            r.raise_for_status()
+            obs = r.json().get("observations", [])
+            data = {o["date"]: float(o["value"]) for o in obs if o["value"] != "."}
+            s = pd.Series(data)
+            s.index = pd.to_datetime(s.index)
+            return s.sort_index()
+        except Exception:
+            return None
+
+    MACRO_SERIES = {
+        "Fed Funds Rate": ("FEDFUNDS", "percent", False),
+        "CPI YoY %": ("CPIAUCSL", "percent", True),
+        "Unemployment": ("UNRATE", "percent", False),
+        "10Y Treasury": ("DGS10", "percent", False),
+        "2Y Treasury": ("DGS2", "percent", False),
+        "PCE Inflation YoY": ("PCEPI", "percent", True),
+        "GDP Growth Rate": ("A191RL1Q225SBEA", "percent", False),
+        "Industrial Production": ("INDPRO", "index", True),
+    }
+
+    if fred_key:
+        if st.button("📊 Load Macro Dashboard", type="primary", key="macro_load"):
+            with st.spinner("Loading FRED data…"):
+                macro_data = {}
+                for name, (series_id, unit, pct_change) in MACRO_SERIES.items():
+                    s = _fred_series(series_id, fred_key, 120)
+                    if s is not None and len(s) > 0:
+                        if pct_change:
+                            s = s.pct_change(12).dropna() * 100
+                        macro_data[name] = s
+                st.session_state["_macro_fred_data"] = macro_data
+
+        macro_data = st.session_state.get("_macro_fred_data", {})
+
+        if macro_data:
+            # Key metrics row
+            metric_cols = st.columns(4)
+            key_names = ["Fed Funds Rate", "CPI YoY %", "Unemployment", "10Y Treasury"]
+            for col, name in zip(metric_cols, key_names):
+                if name in macro_data and len(macro_data[name]) > 1:
+                    s = macro_data[name]
+                    latest = s.iloc[-1]
+                    prev   = s.iloc[-2]
+                    col.metric(name, f"{latest:.2f}%", f"{latest-prev:+.2f}%")
+
+            st.divider()
+
+            # Yield curve signal (2Y vs 10Y)
+            if "10Y Treasury" in macro_data and "2Y Treasury" in macro_data:
+                t10 = macro_data["10Y Treasury"].iloc[-1]
+                t2  = macro_data["2Y Treasury"].iloc[-1]
+                spread = t10 - t2
+                spread_color = COLOR_DANGER if spread < 0 else COLOR_SUCCESS
+                st.markdown(f"""
+                <div class='card' style='border-left:3px solid {spread_color};padding:16px;'>
+                  <div style='font-size:13px;font-weight:700;color:{spread_color};'>
+                    {"⚠️ INVERTED YIELD CURVE" if spread < 0 else "✅ Normal Yield Curve"}
+                    &nbsp;·&nbsp; 10Y-2Y Spread: {spread:+.2f}%
+                  </div>
+                  <div style='font-size:12px;color:#8aadcc;margin-top:6px;'>
+                    2Y: {t2:.2f}% &nbsp;|&nbsp; 10Y: {t10:.2f}%
+                    {"&nbsp;·&nbsp; Inverted curve historically precedes recession by 12-18 months." if spread < 0 else ""}
+                  </div>
+                </div>""", unsafe_allow_html=True)
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # Charts grid 2x2
+            chart_names = [n for n in ["Fed Funds Rate","CPI YoY %","Unemployment","GDP Growth Rate"] if n in macro_data]
+            for i in range(0, len(chart_names), 2):
+                cols = st.columns(2)
+                for col, name in zip(cols, chart_names[i:i+2]):
+                    s = macro_data[name]
+                    fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode="lines",
+                                               line=dict(color=COLOR_PRIMARY, width=2),
+                                               fill="tozeroy", fillcolor="rgba(97,114,243,0.08)"))
+                    fig.update_layout(
+                        template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                        title=name, height=260, showlegend=False,
+                        xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                        yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                        font=dict(color="#A1A1AA"), margin=dict(l=40, r=16, t=40, b=32))
+                    col.plotly_chart(fig, use_container_width=True)
+        else:
+            st.markdown("""
+            <div class='card' style='text-align:center;color:#4a6a8a;padding:40px;'>
+              <div style='font-size:36px;margin-bottom:12px;'>📊</div>
+              <div style='font-size:14px;'>Click <strong style='color:#7eb8e8;'>Load Macro Dashboard</strong> to fetch FRED indicators.</div>
+              <div style='font-size:12px;margin-top:8px;color:#3a5a7a;'>Requires a free FRED API key (fred.stlouisfed.org)</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.info("Add your FRED API key in Settings to use this dashboard.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 7 — YIELD CURVE
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_curve:
+    import yfinance as yf
+    import pandas as pd
+    import plotly.graph_objects as go
+    from utils.config import COLOR_PRIMARY, COLOR_SUCCESS, COLOR_DANGER
+
+    st.markdown("US Treasury yield curve — current snapshot and historical spread analysis.")
+
+    YIELD_TICKERS = {
+        "1M": "^IRX",  # 13-week
+        "2Y": "^TUX",  # 2Y note (may use DGS2 fallback)
+        "5Y": "^FVX",  # 5Y
+        "10Y": "^TNX", # 10Y
+        "30Y": "^TYX", # 30Y
+    }
+
+    # Fallback to direct yfinance tickers
+    YIELD_TICKERS_ALT = {
+        "3M": "^IRX",
+        "5Y": "^FVX",
+        "10Y": "^TNX",
+        "30Y": "^TYX",
+    }
+
+    @st.cache_data(ttl=3600)
+    def _get_yield_curve():
+        yields = {}
+        for mat, sym in YIELD_TICKERS_ALT.items():
+            try:
+                info = yf.Ticker(sym).history(period="5d")
+                if not info.empty:
+                    yields[mat] = round(float(info["Close"].iloc[-1]), 3)
+            except:
+                pass
+        return yields
+
+    @st.cache_data(ttl=3600)
+    def _get_yield_history(symbol: str, period: str):
+        try:
+            return yf.Ticker(symbol).history(period=period)["Close"]
+        except:
+            return None
+
+    col_btn, col_period = st.columns([2, 1])
+    curve_hist_period = col_period.selectbox("History period", ["1y", "2y", "5y"], index=0, key="curve_period")
+
+    if st.button("〰️ Load Yield Curve", type="primary", key="curve_load"):
+        st.session_state["_curve_loaded"] = True
+
+    if st.session_state.get("_curve_loaded"):
+        with st.spinner("Loading Treasury yields…"):
+            yields = _get_yield_curve()
+
+        if yields:
+            maturities = list(yields.keys())
+            rates = list(yields.values())
+
+            fig_curve = go.Figure()
+            fig_curve.add_scatter(
+                x=maturities, y=rates, mode="lines+markers",
+                line=dict(color=COLOR_PRIMARY, width=3),
+                marker=dict(size=10, color=COLOR_PRIMARY))
+            fig_curve.update_layout(
+                template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                title="US Treasury Yield Curve (Current)", height=400,
+                xaxis_title="Maturity", yaxis_title="Yield (%)",
+                xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36))
+            st.plotly_chart(fig_curve, use_container_width=True)
+
+            # Metrics
+            m_cols = st.columns(len(yields))
+            for col, (mat, rate) in zip(m_cols, yields.items()):
+                col.metric(f"{mat} Treasury", f"{rate:.3f}%")
+
+            # Spread signals
+            st.divider()
+            st.subheader("Spread Analysis")
+            if "10Y" in yields and "3M" in yields:
+                spread_10_3 = yields["10Y"] - yields["3M"]
+                spread_color = COLOR_DANGER if spread_10_3 < 0 else COLOR_SUCCESS
+                st.markdown(f"""
+                <div class='card' style='border-left:3px solid {spread_color};padding:14px;margin-bottom:10px;'>
+                  <span style='color:{spread_color};font-weight:700;'>10Y-3M Spread: {spread_10_3:+.3f}%</span>
+                  {"&nbsp; — Inverted: historically strong recession predictor (NY Fed model)" if spread_10_3 < 0 else "&nbsp; — Normal: positive term premium"}
+                </div>""", unsafe_allow_html=True)
+
+            # Historical spread chart
+            st.subheader(f"10Y-3M Spread — {curve_hist_period} History")
+            with st.spinner("Loading spread history…"):
+                h10 = _get_yield_history("^TNX", curve_hist_period)
+                h3m = _get_yield_history("^IRX", curve_hist_period)
+                if h10 is not None and h3m is not None:
+                    spread_hist = (h10 - h3m.reindex(h10.index, method="ffill")).dropna()
+                    fig_spread = go.Figure()
+                    colors_spread = [COLOR_SUCCESS if v >= 0 else COLOR_DANGER for v in spread_hist.values]
+                    fig_spread.add_bar(x=spread_hist.index, y=spread_hist.values,
+                                       marker_color=colors_spread, name="10Y-3M Spread")
+                    fig_spread.add_hline(y=0, line_dash="dash", line_color="#888")
+                    fig_spread.update_layout(
+                        template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                        title="10Y-3M Treasury Spread (Recession signal when < 0)", height=350,
+                        xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                        yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                        font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36))
+                    st.plotly_chart(fig_spread, use_container_width=True)
+        else:
+            st.error("Could not load yield curve data. Yahoo Finance may be temporarily unavailable.")
+    else:
+        st.markdown("""
+        <div class='card' style='text-align:center;color:#4a6a8a;padding:40px;'>
+          <div style='font-size:36px;margin-bottom:12px;'>〰️</div>
+          <div style='font-size:14px;'>Click <strong style='color:#7eb8e8;'>Load Yield Curve</strong> to see the current US Treasury curve and spread analysis.</div>
+        </div>""", unsafe_allow_html=True)

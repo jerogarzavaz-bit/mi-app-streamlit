@@ -168,3 +168,65 @@ def seed_auth_credentials(creds: dict) -> bool:
         return True
     except Exception:
         return False
+
+
+# ── Community chat ─────────────────────────────────────────────────────────────
+# Messages are stored in the top-level `community_messages` collection.
+# No RLS — all authenticated users can read and write. Users can only
+# delete their own messages (enforced at app layer).
+
+def post_community_message(username: str, display_name: str, text: str, tickers: list) -> bool:
+    db = _get_db()
+    if db is None or not username or not text.strip():
+        return False
+    try:
+        from google.cloud import firestore as _fs
+        db.collection("community_messages").add(_clean({
+            "username":     username,
+            "display_name": display_name,
+            "text":         text.strip(),
+            "tickers":      tickers,
+            "timestamp":    _fs.SERVER_TIMESTAMP,
+        }))
+        return True
+    except Exception:
+        return False
+
+
+def get_community_messages(limit: int = 100) -> list[dict]:
+    db = _get_db()
+    if db is None:
+        return []
+    try:
+        docs = (db.collection("community_messages")
+                  .order_by("timestamp", direction="DESCENDING")
+                  .limit(limit)
+                  .stream())
+        msgs = []
+        for doc in docs:
+            d = doc.to_dict()
+            d["id"] = doc.id
+            msgs.append(d)
+        return list(reversed(msgs))  # oldest first for chat display
+    except Exception:
+        return []
+
+
+def delete_community_message(doc_id: str, requesting_user: str) -> bool:
+    db = _get_db()
+    if db is None:
+        return False
+    try:
+        ref = db.collection("community_messages").document(doc_id)
+        doc = ref.get()
+        if not doc.exists:
+            return False
+        # Only owner or admin can delete
+        owner = doc.to_dict().get("username", "")
+        from utils.auth import is_admin
+        if requesting_user != owner and not is_admin():
+            return False
+        ref.delete()
+        return True
+    except Exception:
+        return False

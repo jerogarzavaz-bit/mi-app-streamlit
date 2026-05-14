@@ -361,6 +361,7 @@ pages = [
     st.Page("pages/hub_discover.py",      title="Discover",       icon="🔭"),
     st.Page("pages/hub_intelligence.py",  title="Intelligence",   icon="📡"),
     st.Page("pages/hub_ai.py",            title="AI Workspace",   icon="🤖"),
+    st.Page("pages/hub_community.py",     title="Community",      icon="💬"),
 ]
 pages.append(st.Page("pages/20_Settings.py", title="Settings", icon="⚙️"))
 

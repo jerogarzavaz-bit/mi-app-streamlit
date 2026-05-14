@@ -229,6 +229,126 @@ with tab_perf:
                             font=dict(color="#A1A1AA"))
                         st.plotly_chart(fig_s, use_container_width=True)
 
+        st.divider()
+        with st.expander("📊 Portfolio Attribution", expanded=False):
+            st.caption("Which holdings drove your P&L? Attribution vs equal-weight benchmark.")
+            if portfolio:
+                import yfinance as yf
+                attr_period = st.selectbox("Period", ["1mo","3mo","6mo","1y"], index=1, key="attr_period")
+
+                if st.button("Calculate Attribution", key="attr_run"):
+                    attr_rows = []
+                    total_value = sum(h.get("shares",0) * h.get("avg_cost",0) for h in portfolio if h.get("shares") and h.get("avg_cost"))
+
+                    for h in portfolio:
+                        t = h.get("ticker","")
+                        shares = h.get("shares", 0)
+                        cost = h.get("avg_cost", 0)
+                        if not t or not shares or not cost:
+                            continue
+                        try:
+                            hist = yf.Ticker(t).history(period=attr_period)
+                            if hist.empty:
+                                continue
+                            start_p = float(hist["Close"].iloc[0])
+                            end_p   = float(hist["Close"].iloc[-1])
+                            ret_pct = (end_p - start_p) / start_p * 100
+                            pos_value = shares * cost
+                            weight = pos_value / total_value if total_value else 0
+                            contribution = weight * ret_pct
+                            attr_rows.append({
+                                "Ticker": t,
+                                "Weight %": round(weight * 100, 1),
+                                "Return %": round(ret_pct, 2),
+                                "Contribution %": round(contribution, 2),
+                            })
+                        except:
+                            continue
+
+                    if attr_rows:
+                        import pandas as pd
+                        import plotly.graph_objects as go
+                        from utils.config import COLOR_SUCCESS, COLOR_DANGER
+
+                        df_attr = pd.DataFrame(attr_rows).sort_values("Contribution %", ascending=False)
+                        total_contrib = df_attr["Contribution %"].sum()
+                        st.metric("Total Portfolio Return (Weighted)", f"{total_contrib:+.2f}%")
+
+                        colors = [COLOR_SUCCESS if v >= 0 else COLOR_DANGER for v in df_attr["Contribution %"]]
+                        fig_attr = go.Figure(go.Bar(
+                            x=df_attr["Ticker"], y=df_attr["Contribution %"],
+                            marker_color=colors, text=[f"{v:+.2f}%" for v in df_attr["Contribution %"]],
+                            textposition="outside"))
+                        fig_attr.update_layout(
+                            template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                            title="Contribution to Portfolio Return (%)", height=350,
+                            xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                            yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                            font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36))
+                        st.plotly_chart(fig_attr, use_container_width=True)
+                        st.dataframe(df_attr, use_container_width=True, hide_index=True)
+            else:
+                st.info("Add holdings to calculate attribution.")
+
+        with st.expander("📈 Relative Strength vs SPY", expanded=False):
+            st.caption("How has your portfolio performed relative to the S&P 500?")
+            if portfolio:
+                import yfinance as yf
+                import pandas as pd
+                import plotly.graph_objects as go
+                from utils.config import COLOR_PRIMARY, COLOR_SUCCESS
+
+                rs_period = st.selectbox("Period", ["3mo","6mo","1y","2y"], index=2, key="rs_period")
+                if st.button("Calculate RS", key="rs_run"):
+                    try:
+                        spy_hist = yf.Ticker("SPY").history(period=rs_period)["Close"]
+                        spy_norm = spy_hist / spy_hist.iloc[0] * 100
+
+                        # Build portfolio indexed returns (equal-weight)
+                        port_series = {}
+                        for h in portfolio:
+                            t = h.get("ticker","")
+                            if not t: continue
+                            try:
+                                hist = yf.Ticker(t).history(period=rs_period)["Close"]
+                                if len(hist) > 5:
+                                    port_series[t] = hist / hist.iloc[0] * 100
+                            except:
+                                continue
+
+                        if port_series:
+                            df_all = pd.DataFrame(port_series).dropna()
+                            port_avg = df_all.mean(axis=1)
+                            spy_aligned = spy_norm.reindex(port_avg.index, method="ffill")
+                            rs_line = port_avg / spy_aligned * 100
+
+                            fig_rs = go.Figure()
+                            fig_rs.add_scatter(x=port_avg.index, y=port_avg, name="My Portfolio",
+                                              line=dict(color=COLOR_PRIMARY, width=2))
+                            fig_rs.add_scatter(x=spy_aligned.index, y=spy_aligned, name="SPY",
+                                              line=dict(color="#888", width=2, dash="dash"))
+                            fig_rs.update_layout(
+                                template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                                title="Portfolio vs SPY — Indexed (100 = start)", height=380,
+                                xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                                yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                                font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36),
+                                hovermode="x unified", legend=dict(orientation="h", y=1.02))
+                            st.plotly_chart(fig_rs, use_container_width=True)
+
+                            final_port = port_avg.iloc[-1] - 100
+                            final_spy  = spy_aligned.iloc[-1] - 100
+                            alpha = final_port - final_spy
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("Portfolio Return", f"{final_port:+.1f}%")
+                            c2.metric("SPY Return", f"{final_spy:+.1f}%")
+                            c3.metric("Alpha", f"{alpha:+.1f}%", delta="outperform" if alpha >= 0 else "underperform",
+                                     delta_color="normal" if alpha >= 0 else "inverse")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            else:
+                st.info("Add holdings to calculate relative strength.")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — OPTIMIZER
@@ -404,6 +524,75 @@ with tab_div:
                 st.dataframe(pd.DataFrame(cal_rows), hide_index=True, use_container_width=True)
             else:
                 st.info("No upcoming ex-dividend dates found for your holdings.")
+
+        st.divider()
+        with st.expander("🔄 DRIP Simulator — Dividend Reinvestment", expanded=False):
+            st.caption("See how reinvesting dividends compounds your returns over time.")
+            drip_ticker = st.text_input("Ticker", value="AAPL", key="drip_ticker").upper().strip()
+            drip_shares = st.number_input("Starting shares", value=100, min_value=1, key="drip_shares")
+            drip_years  = st.slider("Years to simulate", 1, 30, 10, key="drip_years")
+
+            if st.button("▶ Run DRIP Simulation", key="drip_run"):
+                import yfinance as yf
+                import pandas as pd
+                import plotly.graph_objects as go
+                from utils.config import COLOR_PRIMARY, COLOR_SUCCESS
+
+                with st.spinner("Running simulation…"):
+                    try:
+                        tk = yf.Ticker(drip_ticker)
+                        hist = tk.history(period=f"{drip_years}y")
+                        if hist.empty:
+                            st.error("No data found.")
+                        else:
+                            # Normalize dividends and simulate DRIP
+                            divs = hist["Dividends"][hist["Dividends"] > 0]
+                            prices = hist["Close"]
+
+                            shares_drip = float(drip_shares)
+                            shares_no_drip = float(drip_shares)
+                            drip_values = []
+                            nodrip_values = []
+                            dates = []
+
+                            for date, price in prices.items():
+                                # Pay dividends on ex-dates
+                                if date in divs.index:
+                                    div_amount = divs[date]
+                                    cash_div = shares_drip * div_amount
+                                    new_shares = cash_div / price
+                                    shares_drip += new_shares
+                                drip_values.append(shares_drip * price)
+                                nodrip_values.append(shares_no_drip * price)
+                                dates.append(date)
+
+                            start_val = nodrip_values[0] if nodrip_values else 0
+                            end_drip = drip_values[-1] if drip_values else 0
+                            end_nodrip = nodrip_values[-1] if nodrip_values else 0
+
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("Starting Value", f"${start_val:,.0f}")
+                            c2.metric("Without DRIP", f"${end_nodrip:,.0f}", f"{(end_nodrip/start_val-1)*100:+.1f}%")
+                            c3.metric("With DRIP", f"${end_drip:,.0f}", f"{(end_drip/start_val-1)*100:+.1f}%",
+                                     delta_color="normal")
+
+                            fig_drip = go.Figure()
+                            fig_drip.add_scatter(x=dates, y=drip_values, name="With DRIP",
+                                                line=dict(color=COLOR_SUCCESS, width=2))
+                            fig_drip.add_scatter(x=dates, y=nodrip_values, name="Without DRIP",
+                                                line=dict(color="#888", width=2, dash="dash"))
+                            fig_drip.update_layout(
+                                template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                                title=f"{drip_ticker} — DRIP vs No DRIP ({drip_years}Y)",
+                                height=380, hovermode="x unified",
+                                xaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                                yaxis=dict(gridcolor="rgba(255,255,255,0.04)"),
+                                font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36),
+                                legend=dict(orientation="h", y=1.02))
+                            st.plotly_chart(fig_drip, use_container_width=True)
+                            st.caption(f"Final shares with DRIP: {shares_drip:.2f} vs {drip_shares} without DRIP")
+                    except Exception as e:
+                        st.error(f"Simulation error: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -9,8 +9,9 @@ st.markdown("""
   <div class='page-subtitle'>Chat · Deep Analysis · Financials · Memos · History · Backtester</div>
 </div>""", unsafe_allow_html=True)
 
-tab_chat, tab_analysis, tab_fin, tab_memos, tab_ideas, tab_history, tab_bt = st.tabs([
-    "💬 AI Chat", "📊 Deep Analysis", "💰 Financials", "📝 Memos", "💡 Trade Ideas", "📚 History", "⚡ Backtester"
+tab_chat, tab_analysis, tab_fin, tab_memos, tab_ideas, tab_history, tab_bt, tab_dcf, tab_sizing = st.tabs([
+    "💬 Chat", "🔬 Deep Analysis", "📊 Financials", "📝 Memos",
+    "💡 Trade Ideas", "🕰️ History", "📉 Backtester", "💎 DCF Valuation", "⚖️ Position Sizing"
 ])
 
 
@@ -689,3 +690,236 @@ with tab_bt:
                 st.info("No trades executed. The strategy had no signals in this period.")
     else:
         st.info("Configure a strategy above and click **▶ Run Backtest**.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 8 — DCF VALUATION
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_dcf:
+    import yfinance as yf
+    import numpy as np
+    from utils.ai import has_key, chat as ai_chat
+
+    st.markdown("Intrinsic value estimate using Discounted Cash Flow analysis.")
+
+    dcf_ticker = st.text_input("Ticker", value="AAPL", key="dcf_ticker").upper().strip()
+
+    c1, c2, c3 = st.columns(3)
+    growth_rate_1 = c1.number_input("FCF Growth Rate Y1-5 (%)", value=10.0, min_value=-50.0, max_value=100.0, step=0.5, key="dcf_g1")
+    growth_rate_2 = c2.number_input("FCF Growth Rate Y6-10 (%)", value=5.0, min_value=-50.0, max_value=100.0, step=0.5, key="dcf_g2")
+    terminal_growth = c3.number_input("Terminal Growth Rate (%)", value=2.5, min_value=0.0, max_value=10.0, step=0.1, key="dcf_tg")
+
+    c4, c5 = st.columns(2)
+    wacc = c4.number_input("Discount Rate / WACC (%)", value=10.0, min_value=1.0, max_value=30.0, step=0.5, key="dcf_wacc")
+    margin_safety = c5.number_input("Margin of Safety (%)", value=25.0, min_value=0.0, max_value=60.0, step=5.0, key="dcf_mos")
+
+    if st.button("💎 Calculate Intrinsic Value", type="primary", key="dcf_run"):
+        with st.spinner(f"Fetching {dcf_ticker} financials…"):
+            try:
+                tk = yf.Ticker(dcf_ticker)
+                info = tk.info
+                cf = tk.cashflow
+
+                # Get latest Free Cash Flow (Operating CF - CapEx)
+                if cf is not None and not cf.empty:
+                    op_cf_row = None
+                    capex_row = None
+                    for idx in cf.index:
+                        idx_lower = str(idx).lower()
+                        if "operating" in idx_lower and "cash" in idx_lower:
+                            op_cf_row = idx
+                        if "capital" in idx_lower or "capex" in idx_lower:
+                            capex_row = idx
+
+                    if op_cf_row is not None:
+                        op_cf = float(cf.loc[op_cf_row].iloc[0]) if not pd.isna(cf.loc[op_cf_row].iloc[0]) else 0
+                    else:
+                        op_cf = info.get("operatingCashflow", 0) or 0
+
+                    if capex_row is not None:
+                        capex = abs(float(cf.loc[capex_row].iloc[0])) if not pd.isna(cf.loc[capex_row].iloc[0]) else 0
+                    else:
+                        capex = info.get("capitalExpenditures", 0) or 0
+
+                    fcf = op_cf - capex
+                else:
+                    fcf = info.get("freeCashflow", 0) or 0
+                    capex = 0
+
+                if fcf <= 0:
+                    st.warning(f"FCF is ${fcf/1e9:.2f}B — DCF is less meaningful for negative-FCF companies.")
+                    fcf = max(fcf, 1e6)
+
+                shares = info.get("sharesOutstanding", 1) or 1
+                curr_price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+
+                # DCF calculation
+                g1 = growth_rate_1 / 100
+                g2 = growth_rate_2 / 100
+                tg = terminal_growth / 100
+                r  = wacc / 100
+
+                pv_total = 0
+                yearly = []
+                cf_val = fcf
+                for yr in range(1, 11):
+                    g = g1 if yr <= 5 else g2
+                    cf_val *= (1 + g)
+                    pv = cf_val / (1 + r) ** yr
+                    pv_total += pv
+                    yearly.append({"Year": yr, "FCF ($B)": round(cf_val/1e9, 2), "PV ($B)": round(pv/1e9, 2)})
+
+                terminal_value = cf_val * (1 + tg) / (r - tg)
+                pv_terminal = terminal_value / (1 + r) ** 10
+                pv_total += pv_terminal
+
+                intrinsic_per_share = pv_total / shares
+                mos_price = intrinsic_per_share * (1 - margin_safety / 100)
+                upside = (intrinsic_per_share - curr_price) / curr_price * 100 if curr_price else 0
+
+                # Display results
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Current Price", f"${curr_price:.2f}")
+                c2.metric("Intrinsic Value", f"${intrinsic_per_share:.2f}", f"{upside:+.1f}% upside/downside")
+                c3.metric(f"Buy Below ({margin_safety:.0f}% MoS)", f"${mos_price:.2f}")
+                verdict = "✅ UNDERVALUED" if curr_price <= mos_price else "⚠️ OVERVALUED" if curr_price > intrinsic_per_share else "🟡 FAIR VALUE"
+                c4.metric("Verdict", verdict)
+
+                st.divider()
+                col_l, col_r = st.columns(2)
+                with col_l:
+                    st.caption(f"Latest FCF: ${fcf/1e9:.2f}B  ·  Shares: {shares/1e9:.2f}B  ·  PV of Terminal Value: ${pv_terminal/1e9:.1f}B")
+                    import pandas as pd
+                    st.dataframe(pd.DataFrame(yearly), use_container_width=True, hide_index=True)
+
+                with col_r:
+                    import plotly.graph_objects as go
+                    from utils.config import COLOR_PRIMARY, COLOR_SUCCESS, COLOR_DANGER
+                    pv_sum = sum(y["PV ($B)"] for y in yearly)
+                    fig_dcf = go.Figure(go.Waterfall(
+                        name="DCF", orientation="v",
+                        x=[f"Y{y['Year']}" for y in yearly] + ["Terminal PV"],
+                        y=[y["PV ($B)"] for y in yearly] + [round(pv_terminal/1e9, 2)],
+                        connector=dict(line=dict(color="rgba(255,255,255,0.1)")),
+                        increasing=dict(marker_color=COLOR_SUCCESS),
+                        decreasing=dict(marker_color=COLOR_DANGER),
+                        totals=dict(marker_color=COLOR_PRIMARY)))
+                    fig_dcf.update_layout(
+                        template="plotly_dark", paper_bgcolor="#09090B", plot_bgcolor="#09090B",
+                        title="DCF — Present Value Breakdown ($B)", height=380,
+                        font=dict(color="#A1A1AA"), margin=dict(l=48, r=24, t=44, b=36))
+                    st.plotly_chart(fig_dcf, use_container_width=True)
+
+                # AI commentary
+                if has_key():
+                    if st.button("🤖 AI Valuation Commentary", key="dcf_ai"):
+                        prompt = f"""DCF analysis for {dcf_ticker}:
+- Current price: ${curr_price:.2f}
+- Intrinsic value (DCF): ${intrinsic_per_share:.2f}
+- Margin of safety price: ${mos_price:.2f}
+- Latest FCF: ${fcf/1e9:.2f}B
+- Growth assumptions: {growth_rate_1}% Y1-5, {growth_rate_2}% Y6-10, {terminal_growth}% terminal
+- WACC: {wacc}%
+Provide a brief (3-4 bullet) commentary on whether these DCF assumptions are reasonable given the company's business model, competitive position, and growth history. Flag any key risks or uncertainties."""
+                        with st.spinner("Claude analyzing…"):
+                            resp = ai_chat([{"role": "user", "content": prompt}])
+                        if resp: st.markdown(resp)
+
+            except Exception as e:
+                st.error(f"DCF calculation failed: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+    else:
+        st.markdown("""
+        <div class='card' style='text-align:center;color:#4a6a8a;padding:40px;'>
+          <div style='font-size:36px;margin-bottom:12px;'>💎</div>
+          <div style='font-size:15px;font-weight:600;color:#6a8aaa;margin-bottom:8px;'>DCF Valuation</div>
+          <div style='font-size:13px;'>Enter a ticker, adjust your assumptions, and click <strong style='color:#7eb8e8;'>Calculate Intrinsic Value</strong>.</div>
+        </div>""", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 9 — POSITION SIZING
+# ══════════════════════════════════════════════════════════════════════════════
+with tab_sizing:
+    import numpy as np
+    import yfinance as yf
+
+    st.markdown("Calculate optimal position sizes based on your risk parameters.")
+
+    ps_col1, ps_col2 = st.columns(2)
+
+    with ps_col1:
+        st.subheader("📐 Fixed Fractional / % Risk")
+        account_size = st.number_input("Account Size ($)", value=100000, min_value=1000, step=1000, key="ps_acct")
+        risk_pct = st.slider("Risk per trade (%)", 0.25, 5.0, 1.0, step=0.25, key="ps_risk_pct")
+
+        ps_entry = st.number_input("Entry Price ($)", value=150.0, min_value=0.01, key="ps_entry")
+        ps_stop  = st.number_input("Stop Loss Price ($)", value=142.5, min_value=0.01, key="ps_stop")
+
+        if ps_entry > ps_stop and ps_entry > 0 and ps_stop > 0:
+            risk_per_share = ps_entry - ps_stop
+            risk_amount = account_size * risk_pct / 100
+            shares = int(risk_amount / risk_per_share)
+            position_value = shares * ps_entry
+            pct_of_acct = position_value / account_size * 100
+
+            m1, m2 = st.columns(2)
+            m1.metric("Shares to Buy", f"{shares:,}")
+            m2.metric("Position Size", f"${position_value:,.0f}", f"{pct_of_acct:.1f}% of account")
+            m1.metric("Risk Amount", f"${risk_amount:,.0f}")
+            m2.metric("Risk per Share", f"${risk_per_share:.2f}")
+
+    with ps_col2:
+        st.subheader("🎲 Kelly Criterion")
+        st.caption("Optimal bet size based on win rate and reward/risk ratio.")
+
+        win_rate = st.slider("Win Rate (%)", 30, 70, 50, key="kelly_wr") / 100
+        rr_ratio = st.number_input("Reward:Risk Ratio", value=2.0, min_value=0.5, max_value=10.0, step=0.5, key="kelly_rr")
+        kelly_acct = st.number_input("Account Size ($)", value=100000, min_value=1000, step=1000, key="kelly_acct")
+
+        kelly_full = win_rate - (1 - win_rate) / rr_ratio
+        kelly_half = kelly_full / 2  # Half-Kelly is safer in practice
+
+        kelly_pct = max(0, kelly_full) * 100
+        half_kelly_pct = max(0, kelly_half) * 100
+
+        mk1, mk2 = st.columns(2)
+        mk1.metric("Full Kelly", f"{kelly_pct:.1f}%", f"${kelly_acct * kelly_full:,.0f}")
+        mk2.metric("Half Kelly (recommended)", f"{half_kelly_pct:.1f}%", f"${kelly_acct * kelly_half:,.0f}")
+
+        if kelly_full <= 0:
+            st.warning("Negative Kelly — this edge is not profitable with these parameters.")
+        elif kelly_pct > 25:
+            st.warning("Kelly > 25% — consider using half-Kelly to reduce risk of ruin.")
+        else:
+            st.success(f"Recommended position: {half_kelly_pct:.1f}% of portfolio (Half-Kelly)")
+
+    st.divider()
+    st.subheader("📊 Volatility-Based Position Sizing (ATR)")
+    atr_ticker = st.text_input("Ticker for ATR sizing", value="AAPL", key="ps_atr_ticker").upper()
+    atr_risk   = st.number_input("Risk per trade ($)", value=500.0, key="ps_atr_risk")
+    atr_mult   = st.number_input("ATR multiplier for stop", value=2.0, min_value=0.5, max_value=5.0, key="ps_atr_mult")
+
+    if st.button("Calculate ATR Position", key="ps_atr_run"):
+        try:
+            hist = yf.Ticker(atr_ticker).history(period="3mo")
+            if not hist.empty:
+                high_low = hist["High"] - hist["Low"]
+                high_close = abs(hist["High"] - hist["Close"].shift(1))
+                low_close  = abs(hist["Low"]  - hist["Close"].shift(1))
+                tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+                atr_14 = tr.rolling(14).mean().iloc[-1]
+                curr_price_atr = float(hist["Close"].iloc[-1])
+                stop_distance = atr_14 * atr_mult
+                shares_atr = int(atr_risk / stop_distance)
+                position_val_atr = shares_atr * curr_price_atr
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("ATR (14)", f"${atr_14:.2f}")
+                c2.metric("Stop Distance", f"${stop_distance:.2f}")
+                c3.metric("Shares", f"{shares_atr:,}")
+                c4.metric("Position Value", f"${position_val_atr:,.0f}")
+                st.caption(f"Current price: ${curr_price_atr:.2f} | Stop price: ${curr_price_atr - stop_distance:.2f}")
+        except Exception as e:
+            st.error(f"Error: {e}")
