@@ -832,8 +832,20 @@ header[data-testid="stHeader"] { background: transparent !important; height: 0 !
 }
 
 /* ── Light Mode Token Overrides ────────────────────────────────────────────── */
-/* Applied via data-theme="light" on <body> — toggled by Streamlit JS injector */
-[data-theme="light"] {
+</style>
+"""
+
+
+# ── Theme injection helper ─────────────────────────────────────────────────────
+def theme_js(theme: str) -> str:
+    """Inject CSS variable overrides for the active theme.
+    Dark is the default (defined in :root above); light injects a second block
+    that wins via cascade order — no JavaScript needed or used.
+    """
+    if theme != "light":
+        return ""
+    return """<style>
+:root {
     --bg-base:        #F8F8FA;
     --bg-surface:     #F2F2F5;
     --bg-elevated:    #FFFFFF;
@@ -856,30 +868,53 @@ header[data-testid="stHeader"] { background: transparent !important; height: 0 !
     --shadow-lg:  0 12px 48px rgba(0,0,0,0.14), 0 4px 12px rgba(0,0,0,0.08);
     --shadow-glow: 0 0 24px rgba(97,114,243,0.12), 0 4px 20px rgba(0,0,0,0.08);
 }
-[data-theme="light"] .stApp {
-    background: var(--bg-base);
+.stApp {
+    background: #F8F8FA !important;
     background-image:
         radial-gradient(ellipse 80% 50% at 15% -10%, rgba(97,114,243,0.04) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 40% at 85% 110%, rgba(139,92,246,0.03) 0%, transparent 55%);
+        radial-gradient(ellipse 60% 40% at 85% 110%, rgba(139,92,246,0.03) 0%, transparent 55%) !important;
+    color: #111114 !important;
 }
-[data-theme="light"] section[data-testid="stSidebar"] {
-    background: rgba(248,248,250,0.88) !important;
+section[data-testid="stSidebar"] {
+    background: rgba(242,242,245,0.92) !important;
 }
-</style>
-"""
-
-
-# ── Theme injection helper ─────────────────────────────────────────────────────
-def theme_js(theme: str) -> str:
-    """Return a <script> snippet that sets data-theme on <body>."""
-    return f"""<script>
-(function() {{
-    var t = "{theme}";
-    document.body.setAttribute("data-theme", t);
-    var mo = new MutationObserver(function() {{
-        if (document.body.getAttribute("data-theme") !== t)
-            document.body.setAttribute("data-theme", t);
-    }});
-    mo.observe(document.body, {{attributes: true, attributeFilter: ["data-theme"]}});
-}})();
-</script>"""
+section[data-testid="stSidebar"] * {
+    color: #111114 !important;
+}
+.stApp [data-testid="stMarkdownContainer"] p,
+.stApp [data-testid="stMarkdownContainer"] li,
+.stApp [data-testid="stMarkdownContainer"] span,
+.stApp label,
+.stApp .stMetric label,
+.stApp [data-testid="stMetricLabel"],
+.stApp [data-testid="stMetricValue"],
+.stApp [data-testid="stMetricDelta"] {
+    color: #111114 !important;
+}
+.stApp [data-testid="stTextInput"] input,
+.stApp [data-testid="stTextArea"] textarea,
+.stApp [data-testid="stNumberInput"] input {
+    background-color: #FFFFFF !important;
+    color: #111114 !important;
+    border-color: rgba(0,0,0,0.16) !important;
+}
+.stApp [data-testid="stSelectbox"] > div > div,
+.stApp [data-testid="stMultiSelect"] > div > div {
+    background-color: #FFFFFF !important;
+    color: #111114 !important;
+}
+.stApp [data-testid="stExpander"] {
+    background-color: #F2F2F5 !important;
+    border-color: rgba(0,0,0,0.10) !important;
+}
+.stApp .stDataFrame, .stApp [data-testid="stTable"] {
+    background-color: #FFFFFF !important;
+}
+.stApp [data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background-color: #EEEEF2 !important;
+}
+.stApp [data-testid="stAlert"] {
+    background-color: #EEEEF2 !important;
+    color: #111114 !important;
+}
+</style>"""
